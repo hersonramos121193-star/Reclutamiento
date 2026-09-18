@@ -1188,7 +1188,7 @@
         <label>Token de acceso</label>
         <input type="text" id="conexionTokenInput" placeholder="El UUID que generaste dentro de Codigo.gs">
       </div>
-      <div class="desc" style="margin-top:-8px;margin-bottom:14px;">Debe coincidir exactamente con el valor de <code>VALID_TOKEN</code> definido en tu <code>Codigo.gs</code>.</div>
+      <div class="desc" style="margin-top:-8px;margin-bottom:14px;">Debe coincidir exactamente con el valor de <code>TOKEN_ACCESO</code> definido en tu <code>Codigo.gs</code>.</div>
 
       <div class="form-actions" style="justify-content:flex-start;">
         <button class="btn" id="btnGuardarConexion">Guardar y conectar</button>
@@ -1197,18 +1197,31 @@
     </div>
 
     <div class="card">
+      <h2>☁️ Sincronización de Reclutamiento (Vacantes y Candidatos)</h2>
+      <div class="desc">Las vacantes y el catálogo de candidatos viven en este navegador hasta que los sincronizas. Usa "Guardar en la nube" para subir lo que tienes aquí, o "Cargar desde la nube" para traer lo que ya guardó alguien más del equipo. Usa la misma URL/token configurados arriba.</div>
+      <div id="reclutamientoNubeEstadoBox" class="conexion-estado-box sin-config" style="margin:12px 0;">
+        <span class="dot off gris" id="reclutamientoNubeDot"></span>
+        <span id="reclutamientoNubeTexto">Aún no se ha sincronizado en este navegador.</span>
+      </div>
+      <div class="form-actions" style="justify-content:flex-start;">
+        <button class="btn ghost" id="btnGuardarReclutamientoNube">☁️ Guardar en la nube</button>
+        <button class="btn" id="btnCargarReclutamientoNube">⬇️ Cargar desde la nube</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Cómo configurar tu Google Sheet (una sola vez)</h2>
       <ol class="conexion-pasos">
-        <li>Entra a <strong>Google Drive</strong> y crea una hoja de cálculo nueva. Nómbrala, por ejemplo, <strong>"Reclutamiento Metelmex - Base de datos"</strong>.</li>
-        <li>Crea 3 pestañas dentro de la hoja: <strong>Vacantes</strong>, <strong>Candidatos</strong> y <strong>Log_Accesos</strong>.</li>
+        <li>Entra a <strong>Google Drive</strong> y crea una hoja de cálculo nueva. Nómbrala, por ejemplo, <strong>"Metelmex RH - Base de datos"</strong>.</li>
+        <li>No es necesario crear pestañas manualmente: <strong>Catalogo_Empleados</strong>, <strong>Seguimiento_Bajas</strong>, <strong>Vacantes</strong>, <strong>Candidatos</strong> y <strong>_Control</strong> se crean solas la primera vez que guardas desde el dashboard.</li>
         <li>Dentro de la hoja, ve a <strong>Extensiones → Apps Script</strong>.</li>
         <li>Borra el contenido de ejemplo y pega el código del archivo <strong>Codigo.gs</strong> que te compartí.</li>
-        <li>Reemplaza <code>SHEET_ID</code> con el ID de tu hoja (está en la URL del navegador) y define un <code>VALID_TOKEN</code> propio (puedes generar uno corriendo <code>Utilities.getUuid()</code> una vez en el editor).</li>
+        <li>Revisa el valor de <code>TOKEN_ACCESO</code> al inicio del archivo — usa el que ya te generé, o define uno propio (por ejemplo con <code>Utilities.getUuid()</code> corrido una vez en el editor).</li>
         <li>Guarda el proyecto (ícono de disquete).</li>
-        <li>Haz clic en <strong>Implementar → Nueva implementación</strong>.</li>
+        <li>Haz clic en <strong>Implementar → Nueva implementación</strong> (o, si ya tienes una implementación y solo actualizaste el código, en <strong>Implementar → Administrar implementaciones → editar (lápiz) → Nueva versión</strong>).</li>
         <li>En "Tipo", selecciona <strong>Aplicación web</strong>. En "Quién tiene acceso", selecciona <strong>Cualquier usuario</strong>.</li>
         <li>Haz clic en <strong>Implementar</strong> y autoriza los permisos que pida Google (es tu propia cuenta, es seguro).</li>
-        <li>Copia la URL de la aplicación web que te entrega (termina en <code>/exec</code>) y pégala arriba en "URL de tu Google Apps Script", junto con el mismo <code>VALID_TOKEN</code> que definiste.</li>
+        <li>Copia la URL de la aplicación web que te entrega (termina en <code>/exec</code>) y pégala arriba en "URL de tu Google Apps Script", junto con el mismo <code>TOKEN_ACCESO</code> que quedó en tu Codigo.gs.</li>
         <li>Presiona <strong>Guardar y conectar</strong>.</li>
       </ol>
       <div class="desc" style="margin-top:10px;">Todos los dispositivos que usen esta misma URL y token verán y guardarán la misma información.</div>
@@ -3937,13 +3950,102 @@ document.getElementById('btnCargarRotacionNube').addEventListener('click', async
     STATE.seguimientoBajas = resultado.seguimientoBajas || [];
     STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
     saveLocal(STATE);
-    actualizarResumenCatalogoEmpleados();
-    paginaBajas = 1; poblarFiltroAnioBajas(); renderBajasSeguimiento();
-    poblarFiltroAnioPermanencia(); renderPermanencia();
-    renderResumenRotacion();
+    try{
+      actualizarResumenCatalogoEmpleados();
+      paginaBajas = 1; poblarFiltroAnioBajas(); renderBajasSeguimiento();
+      poblarFiltroAnioPermanencia(); renderPermanencia();
+      renderResumenRotacion();
+    } catch(e){ console.error('Error repintando después de cargar desde la nube:', e); }
     actualizarEstadoNubeRotacion('ok', `Cargado desde la nube: ${STATE.catalogoEmpleados.length} empleado(s)` + (resultado.actualizado ? ' · guardado por última vez el ' + formatoFechaLegible(resultado.actualizado.slice(0,10)) : '') + '.');
   } else {
     actualizarEstadoNubeRotacion('error', 'No se pudo cargar: ' + (resultado.error || 'revisa la URL y el token en "Conexión".'));
+  }
+});
+
+/* =========================================================
+   Sincronización con Google Sheets — Reclutamiento (Vacantes y Candidatos)
+   Mismo patrón que Rotación de personal: JSONP para leer, formulario oculto
+   por iframe para escribir, mismo TOKEN_ACCESO/URL configurados en "Conexión".
+   ========================================================= */
+function actualizarEstadoNubeReclutamiento(estado, mensaje){
+  // estado: 'ok' | 'error' | 'cargando' | 'sin-config'
+  const box = document.getElementById('reclutamientoNubeEstadoBox');
+  const dot = document.getElementById('reclutamientoNubeDot');
+  const texto = document.getElementById('reclutamientoNubeTexto');
+  if(!box) return;
+  const clases = {ok:'conectado', error:'error', cargando:'sin-config', 'sin-config':'sin-config'};
+  const dotClases = {ok:' ', error:'off', cargando:'off gris', 'sin-config':'off gris'};
+  box.className = 'conexion-estado-box ' + (clases[estado]||'sin-config');
+  if(dot) dot.className = 'dot ' + (estado in dotClases ? dotClases[estado] : 'off gris');
+  if(texto) texto.textContent = mensaje;
+}
+
+function leerReclutamientoDesdeSheetJSONP(url, token){
+  return new Promise((resolve)=>{
+    if(!url){ resolve({ok:false, error:'no-config'}); return; }
+    const cbName = 'cbReclutamiento_' + Date.now();
+    let resuelto = false;
+    const script = document.createElement('script');
+    window[cbName] = (resp)=>{ resuelto = true; cleanup(); resolve(resp || {ok:false, error:'Respuesta vacía.'}); };
+    function cleanup(){ delete window[cbName]; if(script.parentNode) script.parentNode.removeChild(script); }
+    script.onerror = ()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'No se pudo contactar esa URL.'}); } };
+    script.src = url + '?action=getReclutamientoData&token=' + encodeURIComponent(token) + '&callback=' + cbName;
+    document.body.appendChild(script);
+    setTimeout(()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'Tiempo de espera agotado (el catálogo puede ser grande y Google Apps Script puede tardar en "despertar" la primera vez — intenta de nuevo).'}); } }, 30000);
+  });
+}
+
+document.getElementById('btnGuardarReclutamientoNube').addEventListener('click', async ()=>{
+  const url = CONFIG.APPS_SCRIPT_URL;
+  const token = getToken();
+  if(!url || !token){
+    alert('Primero configura la URL y el token en la pestaña "Conexión con Google Sheets".');
+    return;
+  }
+  const vac = STATE.vacantes || [];
+  const cand = STATE.candidatos || [];
+  if(!confirm(`Esto sube ${vac.length} vacante(s) y ${cand.length} candidato(s) y reemplaza por completo lo que haya guardado en el Google Sheet compartido (no se combina, se sobreescribe). ¿Confirmas que quieres guardar en la nube?`)) return;
+
+  actualizarEstadoNubeReclutamiento('cargando', 'Guardando en la nube…');
+  const payload = { vacantes: vac, candidatos: cand };
+  const resultado = await enviarPostPorIframe(url, {
+    action: 'guardarReclutamientoData',
+    token: token,
+    data: JSON.stringify(payload)
+  });
+  if(resultado.ok){
+    actualizarEstadoNubeReclutamiento('ok', 'Guardado en la nube el ' + new Date().toLocaleString('es-MX') + '.');
+  } else {
+    actualizarEstadoNubeReclutamiento('error', 'No se pudo confirmar el guardado. Revisa la URL/token en "Conexión" e inténtalo de nuevo.');
+  }
+});
+
+document.getElementById('btnCargarReclutamientoNube').addEventListener('click', async ()=>{
+  const url = CONFIG.APPS_SCRIPT_URL;
+  const token = getToken();
+  if(!url || !token){
+    alert('Primero configura la URL y el token en la pestaña "Conexión con Google Sheets".');
+    return;
+  }
+  if(!confirm('Esto reemplaza las vacantes y los candidatos de este navegador con lo último que esté guardado en el Google Sheet. No afecta al catálogo de empleados ni al seguimiento de bajas. ¿Confirmas?')) return;
+
+  actualizarEstadoNubeReclutamiento('cargando', 'Cargando desde la nube…');
+  const resultado = await leerReclutamientoDesdeSheetJSONP(url, token);
+  if(resultado.ok){
+    STATE.vacantes = resultado.vacantes || [];
+    STATE.candidatos = resultado.candidatos || [];
+    saveLocal(STATE);
+    try{
+      refreshCargaLists();
+      populateVacanteSelect();
+      renderResumen();
+      if(document.getElementById('tblCatalogoCandidatos')) renderCatalogo();
+      const detalle = document.getElementById('candidatoDetalle');
+      if(detalle) detalle.style.display = 'none';
+    } catch(e){ console.error('Error repintando después de cargar desde la nube:', e); }
+    actualizarEstadoNubeReclutamiento('ok', `Cargado desde la nube: ${STATE.vacantes.length} vacante(s), ${STATE.candidatos.length} candidato(s)` + (resultado.actualizado ? ' · guardado por última vez el ' + formatoFechaLegible(resultado.actualizado.slice(0,10)) : '') + '.');
+  } else {
+    actualizarEstadoNubeReclutamiento('error', 'No se pudo cargar: ' + (resultado.error || 'revisa la URL y el token en "Conexión".'));
   }
 });
 
