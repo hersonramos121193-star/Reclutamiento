@@ -314,6 +314,15 @@
   .imp-prueba-bloque p{font-size:13px;line-height:1.6;margin:0 0 10px;}
   .imp-prueba-titulo{font-size:14px;color:var(--navy);margin:0 0 8px;}
 
+  .imp-resumen-pruebas{margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid #EEE;}
+  .imp-resumen-item{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;}
+  .imp-resumen-item .imp-resumen-punto{width:9px;height:9px;border-radius:50%;flex:none;}
+  .imp-resumen-item.apto .imp-resumen-punto{background:var(--ok);}
+  .imp-resumen-item.observaciones .imp-resumen-punto{background:#9A7414;}
+  .imp-resumen-item.no-apto .imp-resumen-punto{background:var(--crit);}
+  .imp-alerta-no-apto{margin-top:12px;padding:12px 14px;background:#FAE7E5;border-left:4px solid var(--crit);border-radius:6px;font-size:13px;line-height:1.6;color:var(--text);}
+  .imp-alerta-observaciones{margin-top:12px;padding:12px 14px;background:#FBF1DC;border-left:4px solid #9A7414;border-radius:6px;font-size:13px;line-height:1.6;color:var(--text);}
+
   .badge-local{
     font-size:9.5px;background:#EAF1F6;color:var(--blue);padding:2px 7px;border-radius:10px;margin-left:6px;
     font-weight:700;vertical-align:middle;
@@ -3365,21 +3374,35 @@ const CLEAVER_SECCION_CONTEXTO = {
   'Generales': 'En su forma de ser habitual, sin presión ni motivación especial de por medio'
 };
 
-/** Síntesis en lenguaje sencillo (sin jerga técnica) del patrón DISC por sección — solo referencia, no participa en el veredicto. */
+/** Síntesis en lenguaje sencillo (sin jerga técnica) del patrón DISC por sección — solo referencia, no participa en el veredicto.
+ *  Si la letra dominante y la menos presente salen IGUALES en las 3 facetas (Generales/Motivación/Presión) —
+ *  algo común en reportes reales, no un error — se describe una sola vez en lugar de repetir el mismo
+ *  párrafo tres veces, y se aclara que el patrón se mantiene sin importar el contexto. */
 function generarSintesisCleaver(datos){
   const secciones = datos.secciones || {};
-  const nombresSecciones = Object.keys(secciones);
+  const ordenSecciones = ['Generales', 'Motivación', 'Presión'];
+  const nombresSecciones = ordenSecciones.filter(sec => secciones[sec]);
   if(nombresSecciones.length === 0){
     return 'No se pudo generar una síntesis porque no se detectaron los datos automáticamente. Revisa el PDF manualmente si lo necesitas.';
   }
-  const frases = nombresSecciones.map(sec=>{
+  const patrones = nombresSecciones.map(sec=>{
     const d = secciones[sec];
     const vals = {D: parseFloat(d.D), I: parseFloat(d.I), S: parseFloat(d.S), C: parseFloat(d.C)};
     const letras = Object.keys(vals);
     const max = letras.reduce((a,b)=> vals[a] >= vals[b] ? a : b);
     const min = letras.reduce((a,b)=> vals[a] <= vals[b] ? a : b);
-    const contexto = CLEAVER_SECCION_CONTEXTO[sec] || sec;
-    return `<strong>${contexto}:</strong> esta persona ${CLEAVER_DESCRIPCION[max].alto}. En cambio, ${CLEAVER_DESCRIPCION[min].bajo}.`;
+    return {sec, max, min};
+  });
+
+  const mismoPatronEnLas3 = patrones.length > 1 && patrones.every(p => p.max === patrones[0].max && p.min === patrones[0].min);
+  if(mismoPatronEnLas3){
+    const {max, min} = patrones[0];
+    return `<strong>En las facetas evaluadas (forma de ser habitual, cuando algo le motiva y bajo presión):</strong> esta persona ${CLEAVER_DESCRIPCION[max].alto}. En cambio, ${CLEAVER_DESCRIPCION[min].bajo}. Este patrón se mantiene consistente sin importar el contexto.`;
+  }
+
+  const frases = patrones.map(p=>{
+    const contexto = CLEAVER_SECCION_CONTEXTO[p.sec] || p.sec;
+    return `<strong>${contexto}:</strong> esta persona ${CLEAVER_DESCRIPCION[p.max].alto}. En cambio, ${CLEAVER_DESCRIPCION[p.min].bajo}.`;
   });
   return frases.join('<br><br>');
 }
@@ -3814,6 +3837,47 @@ function marcarGridPorResultado(gridId, idPrefix, reglas, resultado){
   });
 }
 
+/** Bloque de "Resumen de psicometrías": el resultado de CADA prueba en una línea (para ver todo el
+ *  panorama de un vistazo), y si el veredicto global salió "No apto", un recuadro que señala
+ *  exactamente qué prueba y qué factor lo causó — para que quede claro por qué, sin tener que leer
+ *  todos los párrafos de abajo. */
+function generarResumenPsicometrias(agregado, pruebasAnalizadas){
+  if(!pruebasAnalizadas.length) return '';
+
+  const filas = Object.keys(agregado.porPrueba||{}).map(pid=>{
+    const r = agregado.porPrueba[pid];
+    return `<div class="imp-resumen-item ${r.clase}"><span class="imp-resumen-punto"></span><strong>${PRUEBAS_INFO[pid].nombre}:</strong> ${r.veredicto}</div>`;
+  }).join('');
+
+  let alerta = '';
+  if(agregado.reglaDuraFallida){
+    const r = agregado.reglaDuraFallida;
+    alerta = `
+      <div class="imp-alerta-no-apto">
+        <strong>Motivo del resultado "No apto":</strong> en <strong>${PRUEBAS_INFO[r.prueba].nombre}</strong>,
+        el factor <strong>${nombreFactor(r.prueba, r.factor)}</strong> incumplió el criterio obligatorio
+        definido para este puesto (regla: ${r.operador} ${r.valor}).
+      </div>`;
+  } else if(agregado.reglasBlandasFueraDeRango && agregado.reglasBlandasFueraDeRango.length){
+    const items = agregado.reglasBlandasFueraDeRango.map(r=>
+      `<div>• [${PRUEBAS_INFO[r.prueba].nombre}] ${nombreFactor(r.prueba, r.factor)} — fuera del rango esperado (${r.min}–${r.max}).</div>`
+    ).join('');
+    alerta = `
+      <div class="imp-alerta-observaciones">
+        <strong>Puntos a revisar (observaciones):</strong>
+        ${items}
+      </div>`;
+  }
+
+  return `
+    <div class="imp-resumen-pruebas">
+      <h2 class="imp-prueba-titulo">Resumen de psicometrías</h2>
+      ${filas}
+      ${alerta}
+    </div>
+  `;
+}
+
 /* =========================================================
    IMPRESIÓN DEL VEREDICTO
    ========================================================= */
@@ -3824,6 +3888,7 @@ function abrirImpresionVeredicto(){
   const criterio = buscarCriterioParaVacante(vac);
   if(!criterio) return;
   const puestoTexto = `${vac.puesto} (${vac.planta})`;
+  const agregado = evaluarCriterioCompleto(c, criterio);
 
   const pruebasAnalizadas = [];
   const bloques = [];
@@ -3875,6 +3940,8 @@ function abrirImpresionVeredicto(){
       <div><div class="imp-label">Puesto / Planta</div><div class="imp-valor">${vac.puesto} — ${vac.planta}</div></div>
       <div><div class="imp-label">Pruebas analizadas</div><div class="imp-valor">${pruebasAnalizadas.join(', ')}</div></div>
     </div>
+
+    ${generarResumenPsicometrias(agregado, pruebasAnalizadas)}
 
     ${bloques.join('')}
 
