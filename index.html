@@ -286,7 +286,7 @@
     @page{margin:14mm;}
     header.top, .sidebar, .view, .modal-overlay, footer{display:none !important;}
     .app-layout, .main-content{display:block !important;padding:0 !important;margin:0 !important;background:#fff !important;}
-    #impresionVeredicto{display:block !important;position:static;width:auto;padding:0;margin:0;}
+    #impresionVeredicto{display:block !important;position:static !important;top:auto !important;left:auto !important;padding:0;margin:0;}
   }
   #impresionVeredicto{font-family:'Century Gothic','CenturyGothic','Segoe UI',Arial,sans-serif;}
   .imp-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--navy);padding-bottom:14px;margin-bottom:20px;}
@@ -3092,8 +3092,16 @@ function formatoFechaLegible(iso){
 /** Parser genérico: busca "<nombre del factor> ... NUMERO" para cada factor de la lista.
     maxGap controla cuántos caracteres puede haber entre el nombre y el número (algunos reportes
     meten una descripción larga en medio, como Terman; otros lo traen pegado, como Zavic/IPV/Kostick). */
+/** Quita acentos/diacríticos de un texto (para comparar "Solución" con "Solucion", frecuente
+ *  cuando la extracción de texto del PDF pierde los acentos en ciertas fuentes). */
+function quitarAcentos_(s){
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
 function parsearFactoresGenerico(texto, factores, maxGap){
   const valores = {};
+  // Copia del texto sin acentos, usada solo como respaldo si la búsqueda exacta no encuentra nada
+  // (algunos PDFs pierden los acentos al extraer el texto: "Solución" -> "Solucion").
+  const textoSinAcentos = quitarAcentos_(texto);
   factores.forEach(f => {
     if(f.code === 'IQ'){
       const m = texto.match(/IQ\s*:?\s*(\d{2,3})/i);
@@ -3101,8 +3109,15 @@ function parsearFactoresGenerico(texto, factores, maxGap){
       return;
     }
     const nombreEsc = f.nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(nombreEsc + '[^0-9\\n]{0,' + maxGap + '}?(\\d{1,3})', 'i');
-    const m = texto.match(re);
+    // El hueco entre el nombre del factor y su número puede incluir un salto de línea
+    // (reportes en tabla donde la etiqueta y el valor no siempre quedan en el mismo renglón).
+    const patron = nombreEsc + '[^0-9]{0,' + maxGap + '}?(\\d{1,3})';
+    let m = texto.match(new RegExp(patron, 'i'));
+    if(!m){
+      // Reintenta comparando sin acentos, por si el PDF los perdió al extraer el texto.
+      const nombreSinAcentos = quitarAcentos_(f.nombre).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      m = textoSinAcentos.match(new RegExp(nombreSinAcentos + '[^0-9]{0,' + maxGap + '}?(\\d{1,3})', 'i'));
+    }
     if(m){
       const val = parseInt(m[1]);
       if(val >= f.min - 5 && val <= f.max + 5) valores[f.code] = val;
@@ -3115,11 +3130,26 @@ function parsear16PF(texto){ return parsearFactoresGenerico(texto, FACTORES_16PF
 function parseCleaverAciertos(texto){
   const secciones = ['Motivación','Presión','Generales'];
   const resultado = {};
+  // Patrón de 8 números (D, D%, I, I%, S, S%, C, C%) con huecos ACOTADOS entre ellos — antes se usaba
+  // "\s+" sin límite entre el nombre de la sección y los números, lo que podía saltar sobre saltos de
+  // línea/páginas enteras y terminar agarrando el mismo bloque de números para las 3 secciones
+  // (por eso salían idénticas). Ahora cada sección busca su propio bloque en una ventana corta de
+  // texto justo después de su nombre.
+  const patronNumeros = /(-?\d+)\s{1,6}(\d+)\s{1,10}(-?\d+)\s{1,6}(\d+)\s{1,10}(-?\d+)\s{1,6}(\d+)\s{1,10}(-?\d+)\s{1,6}(\d+)/;
   secciones.forEach(sec=>{
-    const re = new RegExp(sec + '\\s+(-?\\d+)\\s+(\\d+)\\s+(-?\\d+)\\s+(\\d+)\\s+(-?\\d+)\\s+(\\d+)\\s+(-?\\d+)\\s+(\\d+)', 'i');
-    const m = texto.match(re);
-    if(m){
-      resultado[sec] = { D: m[1], I: m[3], S: m[5], C: m[7] };
+    const reNombre = new RegExp(sec, 'i');
+    let desde = 0;
+    while(true){
+      const idxRel = texto.slice(desde).search(reNombre);
+      if(idxRel === -1) break;
+      const idx = desde + idxRel;
+      const ventana = texto.slice(idx, idx + 220); // ventana corta: solo lo que sigue inmediatamente al nombre
+      const m = ventana.match(patronNumeros);
+      if(m){
+        resultado[sec] = { D: m[1], I: m[3], S: m[5], C: m[7] };
+        break;
+      }
+      desde = idx + sec.length; // no se encontró un bloque de números válido aquí; prueba la siguiente aparición del nombre
     }
   });
   const patronMatch = texto.match(/\b([DISC](?:>[DISC])?[+-]?)\s/g);
@@ -3854,7 +3884,46 @@ function abrirImpresionVeredicto(){
   `;
 
   document.getElementById('impresionVeredicto').innerHTML = html;
+  ajustarImpresionUnaHoja();
   window.print();
+}
+
+/** Encoge el documento de impresión (con la propiedad CSS "zoom", que sí reacomoda el texto —
+ *  a diferencia de "transform: scale", que solo lo escala visualmente sin recalcular los saltos
+ *  de línea) hasta que quepa completo en una sola hoja carta, respetando el margen de @page (14mm).
+ *  Así, sin importar cuántas pruebas/factores tenga el candidato, el veredicto siempre imprime
+ *  en 1 sola página. */
+function ajustarImpresionUnaHoja(){
+  const el = document.getElementById('impresionVeredicto');
+  // Altura útil de una hoja carta (279.4mm) menos 14mm de margen arriba y abajo (ver @page en el CSS),
+  // convertida a píxeles con la equivalencia estándar de impresión (96px por pulgada = 3.7795px/mm).
+  const PX_POR_MM = 96 / 25.4;
+  const ALTURA_DISPONIBLE_PX = (279.4 - 28) * PX_POR_MM;
+  const ANCHO_DISPONIBLE_MM = 215.9 - 28;
+
+  // Se muestra temporalmente fuera de la pantalla (no display:none) para poder medir su alto real;
+  // el listener de "afterprint" más abajo lo vuelve a ocultar al terminar.
+  el.style.cssText = `display:block; position:fixed; top:0; left:-99999px; width:${ANCHO_DISPONIBLE_MM}mm; zoom:1;`;
+
+  let zoom = 1;
+  let intentos = 0;
+  while(el.scrollHeight > ALTURA_DISPONIBLE_PX && zoom > 0.4 && intentos < 30){
+    zoom -= 0.02;
+    el.style.zoom = zoom;
+    intentos++;
+  }
+
+  // Ya medido y ajustado: lo regresa al flujo normal del documento (la impresión real usa el CSS de
+  // @media print, que fuerza position:static) — solo deja el zoom calculado y el ancho, para que al
+  // imprimir ocupe exactamente el mismo espacio que se usó para medir.
+  el.style.cssText = `width:${ANCHO_DISPONIBLE_MM}mm; zoom:${zoom};`;
+}
+if(!window.__impresionVeredictoAfterPrintListo){
+  window.__impresionVeredictoAfterPrintListo = true;
+  window.addEventListener('afterprint', ()=>{
+    const el = document.getElementById('impresionVeredicto');
+    if(el) el.style.cssText = '';
+  });
 }
 document.getElementById('btnImprimirVeredicto').addEventListener('click', abrirImpresionVeredicto);
 
