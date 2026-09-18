@@ -767,15 +767,12 @@
                   <div id="sintesisChart16PF" class="sintesis-box"></div>
                 </div>
                 <div class="valores-16pf-grid" id="valores16PFGrid"></div>
-                <div class="form-actions" style="justify-content:flex-start;">
-                  <button class="btn" id="btnCalcularVeredicto">Calcular veredicto</button>
-                </div>
                 <div id="explicacionVeredicto" class="factor-explicacion"></div>
               </div>
             </div>
 
             <div id="bloqueCleaver" style="display:none;">
-              <h3 style="font-size:13px;color:var(--navy);margin:20px 0 6px;">Cleaver (DISC) — referencia</h3>
+              <h3 style="font-size:13px;color:var(--navy);margin:20px 0 6px;">Cleaver (DISC)</h3>
               <div class="upload-box">
                 <input type="file" id="detPdfCleaver" accept="application/pdf">
                 <div style="margin-top:8px;">
@@ -791,6 +788,16 @@
                   <tbody id="cleaverTablaBody"></tbody>
                 </table>
                 <div class="desc" id="cleaverPatron" style="margin-top:8px;"></div>
+              </div>
+              <div id="valoresCleaverWrap" style="display:none;margin-top:16px;">
+                <div class="desc" style="margin-bottom:6px;">Reglas duras y blandas de Cleaver definidas para este puesto (se configuran en "Psicometrías"). Los valores se extraen del PDF de arriba y quedan editables aquí por si algo no se leyó bien.</div>
+                <div class="chart-criterio-box" id="cleaverReglasChartBox" style="display:none;">
+                  <div class="desc" style="margin-bottom:6px;">Factores evaluados por el criterio — la banda muestra el rango aceptable, la marca muestra dónde cae el candidato.</div>
+                  <div class="chart-fixed-box h-170"><canvas id="chartCriterioFactoresCleaver"></canvas></div>
+                  <div id="sintesisChartCleaverReglas" class="sintesis-box"></div>
+                </div>
+                <div id="cleaverSinCriterioMsg" class="desc" style="display:none;">Cleaver no tiene reglas duras/blandas definidas en el criterio de este puesto — los valores quedan guardados como referencia solamente.</div>
+                <div class="valores-16pf-grid" id="valoresCleaverGrid"></div>
               </div>
             </div>
 
@@ -821,6 +828,7 @@
             </div>
 
             <div class="form-actions" style="justify-content:flex-start;margin-top:20px;padding-top:16px;border-top:1px solid #EDEEEF;">
+              <button class="btn" id="btnCalcularVeredicto">Calcular veredicto</button>
               <button class="btn secondary" id="btnImprimirVeredicto" style="display:none;">🖨️ Imprimir Veredicto de Psicometrías</button>
             </div>
           </div>
@@ -879,7 +887,7 @@
     <!-- FORM: nuevo / editar criterio -->
     <div class="card sub-panel2" id="sub2-nuevoCriterio" style="display:none;">
       <h2 id="critFormTitulo">Nuevo criterio de psicometría</h2>
-      <div class="desc">Define para qué puesto y planta aplica. Puedes definir reglas de una, varias, o todas las pruebas a la vez — el Cleaver no aparece aquí porque sigue siendo solo referencia, sin reglas de aprobación.</div>
+      <div class="desc">Define para qué puesto y planta aplica. Puedes definir reglas de una, varias, o todas las pruebas a la vez, incluyendo Cleaver (D/I/S/C de cada una de sus 3 secciones: Generales, Motivación y Presión).</div>
 
       <div class="form-grid" style="grid-template-columns:1fr 1fr;">
         <div class="form-field"><label>Puesto *</label><input type="text" id="critPuesto" placeholder="Ej. Operador General"></div>
@@ -2757,16 +2765,44 @@ const FACTORES_TERMAN = [
   {code:'ORG', nombre:'Organización', min:0, max:30}, {code:'ATEN', nombre:'Atención', min:0, max:30}
 ];
 
-/** Registro central de pruebas con criterio de aprobación (todas menos Cleaver, que sigue siendo solo referencia). */
+/** Cleaver (DISC) — un valor D/I/S/C por cada una de las 3 secciones del reporte (Generales, Motivación, Presión).
+ *  El rango exacto varía según el formato del reporte que uses; -30/30 es un valor de referencia editable
+ *  por regla — ajusta el mínimo/máximo de cada regla según lo que veas en tus propios reportes. */
+const FACTORES_CLEAVER = [
+  {code:'GEN_D', nombre:'Generales — D (Dominancia)', min:-30, max:30}, {code:'GEN_I', nombre:'Generales — I (Influencia)', min:-30, max:30},
+  {code:'GEN_S', nombre:'Generales — S (Estabilidad)', min:-30, max:30}, {code:'GEN_C', nombre:'Generales — C (Cumplimiento)', min:-30, max:30},
+  {code:'MOT_D', nombre:'Motivación — D (Dominancia)', min:-30, max:30}, {code:'MOT_I', nombre:'Motivación — I (Influencia)', min:-30, max:30},
+  {code:'MOT_S', nombre:'Motivación — S (Estabilidad)', min:-30, max:30}, {code:'MOT_C', nombre:'Motivación — C (Cumplimiento)', min:-30, max:30},
+  {code:'PRE_D', nombre:'Presión — D (Dominancia)', min:-30, max:30}, {code:'PRE_I', nombre:'Presión — I (Influencia)', min:-30, max:30},
+  {code:'PRE_S', nombre:'Presión — S (Estabilidad)', min:-30, max:30}, {code:'PRE_C', nombre:'Presión — C (Cumplimiento)', min:-30, max:30}
+];
+const CLEAVER_PREFIJO_SECCION = {'Generales':'GEN', 'Motivación':'MOT', 'Presión':'PRE'};
+/** Convierte las 3 secciones {D,I,S,C} extraídas del PDF a un solo objeto plano (GEN_D, MOT_I, etc.),
+ *  que es el formato que usa el motor genérico de reglas duras/blandas (igual que las demás pruebas). */
+function flattenCleaverSecciones(secciones){
+  const out = {};
+  Object.keys(secciones||{}).forEach(sec=>{
+    const pre = CLEAVER_PREFIJO_SECCION[sec];
+    if(!pre) return;
+    const d = secciones[sec] || {};
+    ['D','I','S','C'].forEach(letra=>{
+      const v = parseFloat(d[letra]);
+      if(!isNaN(v)) out[pre + '_' + letra] = v;
+    });
+  });
+  return out;
+}
+
+/** Registro central de pruebas con criterio de aprobación. */
 const PRUEBAS_INFO = {
   '16pf':    { nombre: '16PF',    factores: FACTORES_16PF,    escala: '0–10' },
-  'cleaver': { nombre: 'Cleaver', factores: null,              escala: 'N/A — solo referencia' },
+  'cleaver': { nombre: 'Cleaver', factores: FACTORES_CLEAVER, escala: 'varía por reporte' },
   'zavic':   { nombre: 'Zavic',   factores: FACTORES_ZAVIC,   escala: '0–40' },
   'ipv':     { nombre: 'IPV',     factores: FACTORES_IPV,     escala: '0–10' },
   'kostick': { nombre: 'Kostick', factores: FACTORES_KOSTICK, escala: '0–10' },
   'terman':  { nombre: 'Terman',  factores: FACTORES_TERMAN,  escala: 'varía por sección' }
 };
-const PRUEBAS_CON_REGLAS = ['16pf','zavic','ipv','kostick','terman'];
+const PRUEBAS_CON_REGLAS = ['16pf','cleaver','zavic','ipv','kostick','terman'];
 const PRUEBAS_TODAS = ['16pf','cleaver','zavic','ipv','kostick','terman'];
 
 function nombreFactor(pruebaId, code){
@@ -2799,12 +2835,6 @@ function renderCriterios(){
     const {duras, blandas} = contarReglas(cr);
     const asignadas = cr.pruebasAsignadas || [];
     const bloquesPrueba = asignadas.map(pid => {
-      if(pid === 'cleaver'){
-        return `<div class="prueba-subgrupo">
-          <div class="prueba-subgrupo-titulo">Cleaver</div>
-          <div class="regla-lista">Asignada como referencia — sin reglas de aprobación.</div>
-        </div>`;
-      }
       const p = (cr.pruebas||{})[pid];
       const tieneReglas = p && ((p.reglasDuras||[]).length>0 || (p.reglasBlandas||[]).length>0);
       return `<div class="prueba-subgrupo">
@@ -2862,18 +2892,6 @@ function construirSeccionesPruebasCriterio(criterioExistente){
   cont.innerHTML = PRUEBAS_TODAS.map(pid => {
     const info = PRUEBAS_INFO[pid];
     const estaAsignada = asignadas.includes(pid);
-
-    if(pid === 'cleaver'){
-      return `
-      <div class="prueba-criterio-section" data-prueba-section="cleaver">
-        <div class="pcs-header" style="cursor:default;">
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0;">
-            <input type="checkbox" class="prueba-asignada-check" data-prueba="cleaver" ${estaAsignada?'checked':''}>
-            <h3>Cleaver <span style="font-weight:400;color:var(--text-dim);">(solo referencia — no tiene reglas de aprobación)</span></h3>
-          </label>
-        </div>
-      </div>`;
-    }
 
     const p = criterioExistente ? (criterioExistente.pruebas||{})[pid] : null;
     const tieneReglas = p && ((p.reglasDuras||[]).length>0 || (p.reglasBlandas||[]).length>0);
@@ -3200,14 +3218,45 @@ document.getElementById('btnExtraerCleaver').addEventListener('click', async ()=
     const c = STATE.candidatos.find(c=>c.id===candidatoSeleccionadoId);
     if(c){
       c.cleaverInfo = datos;
+      const valoresPlanos = flattenCleaverSecciones(datos.secciones);
+      c.psicoOtras = c.psicoOtras || {};
+      c.psicoOtras.cleaver = { valores: valoresPlanos, fechaPresentacion: datos.fechaPresentacion || (c.psicoOtras.cleaver && c.psicoOtras.cleaver.fechaPresentacion) };
       saveLocal(STATE);
     }
     renderCleaverResultado(datos);
+    renderReglasCleaverUI();
   }catch(err){
     alert('No se pudo leer el PDF del Cleaver automáticamente.');
   }
   btn.textContent = textoOriginal; btn.disabled = false;
 });
+
+/** Pinta la grilla editable + la gráfica de reglas duras/blandas de Cleaver, igual que las "otras pruebas" genéricas. */
+function renderReglasCleaverUI(){
+  const c = STATE.candidatos.find(c=>c.id===candidatoSeleccionadoId);
+  const vac = c ? STATE.vacantes.find(v=>v.id===c.vacanteId) : null;
+  const criterio = buscarCriterioParaVacante(vac);
+  const datos = c && c.psicoOtras ? c.psicoOtras.cleaver : null;
+  if(!datos){
+    document.getElementById('valoresCleaverWrap').style.display = 'none';
+    return;
+  }
+  document.getElementById('valoresCleaverWrap').style.display = 'block';
+  renderGrid('valoresCleaverGrid', FACTORES_CLEAVER, datos.valores || {}, 'vc');
+
+  const reglas = criterio ? (criterio.pruebas || {})['cleaver'] : null;
+  if(reglas && ((reglas.reglasDuras||[]).length || (reglas.reglasBlandas||[]).length)){
+    document.getElementById('cleaverReglasChartBox').style.display = 'block';
+    document.getElementById('cleaverSinCriterioMsg').style.display = 'none';
+    renderChartFactoresPrueba(datos.valores || {}, reglas, 'cleaver', 'chartCriterioFactoresCleaver');
+    const sintesis = generarSintesisPrueba(datos.valores || {}, reglas, 'cleaver', puestoTextoActual());
+    document.getElementById('sintesisChartCleaverReglas').innerHTML = sintesis.parrafo +
+      (sintesis.detalles.length ? '<br><br>' + sintesis.detalles.map(d=>'• '+d).join('<br>') : '');
+  } else {
+    document.getElementById('cleaverReglasChartBox').style.display = 'none';
+    document.getElementById('cleaverSinCriterioMsg').style.display = 'block';
+  }
+}
 
 let chartCleaverInstance = null;
 function renderCleaverResultado(datos){
@@ -3673,8 +3722,13 @@ document.getElementById('btnCalcularVeredicto').addEventListener('click', ()=>{
     c.psicoOtras[pidActual].valores = leerGrid(PRUEBAS_INFO[pidActual].factores, 'op');
   }
 
+  if(document.getElementById('valoresCleaverWrap').style.display !== 'none' && c.psicoOtras && c.psicoOtras.cleaver){
+    c.psicoOtras.cleaver.valores = leerGrid(FACTORES_CLEAVER, 'vc');
+  }
+
   document.querySelectorAll('#valores16PFGrid .vf-item').forEach(it=>{ it.classList.remove('fuera-rango'); it.classList.remove('aprobado'); });
   document.querySelectorAll('#otraPruebaGrid .vf-item').forEach(it=>{ it.classList.remove('fuera-rango'); it.classList.remove('aprobado'); });
+  document.querySelectorAll('#valoresCleaverGrid .vf-item').forEach(it=>{ it.classList.remove('fuera-rango'); it.classList.remove('aprobado'); });
 
   const agregado = evaluarCriterioCompleto(c, criterio);
   c.veredictoPsicometria = { veredicto: agregado.veredicto, clase: agregado.clase };
@@ -3698,6 +3752,14 @@ document.getElementById('btnCalcularVeredicto').addEventListener('click', ()=>{
     const reglasOtra = (criterio.pruebas||{})[pidActual];
     if(reglasOtra && agregado.porPrueba[pidActual]){
       marcarGridPorResultado('otraPruebaGrid', 'op', reglasOtra, agregado.porPrueba[pidActual]);
+    }
+  }
+
+  if(document.getElementById('valoresCleaverWrap').style.display !== 'none'){
+    renderReglasCleaverUI();
+    const reglasCleaver = (criterio.pruebas||{})['cleaver'];
+    if(reglasCleaver && agregado.porPrueba['cleaver']){
+      marcarGridPorResultado('valoresCleaverGrid', 'vc', reglasCleaver, agregado.porPrueba['cleaver']);
     }
   }
 
@@ -3746,11 +3808,12 @@ function abrirImpresionVeredicto(){
     `);
   });
 
+  // Patrón DISC crudo del Cleaver (letras/tendencias tipo "D>I+"), como información adicional —
+  // el bloque de apto/no apto de Cleaver (si tiene reglas) ya se agregó arriba, en el loop de PRUEBAS_CON_REGLAS.
   if(c.cleaverInfo){
-    pruebasAnalizadas.push('Cleaver (referencia)');
     bloques.push(`
       <div class="imp-prueba-bloque">
-        <h2 class="imp-prueba-titulo">Cleaver (DISC) — referencia</h2>
+        <h2 class="imp-prueba-titulo">Cleaver (DISC) — patrón detectado</h2>
         <div class="imp-sub" style="margin-bottom:8px;">${c.cleaverInfo.fechaPresentacion ? 'Presentada el ' + formatoFechaLegible(c.cleaverInfo.fechaPresentacion) : 'Fecha de presentación no detectada.'}</div>
         <p>${generarSintesisCleaver(c.cleaverInfo)}</p>
       </div>
@@ -3801,6 +3864,7 @@ function cargarSeccionPsicometriaCandidato(c){
   document.getElementById('detPdfCleaver').value = '';
   document.getElementById('valores16PFWrap').style.display = 'none';
   document.getElementById('cleaverResultadoWrap').style.display = 'none';
+  document.getElementById('valoresCleaverWrap').style.display = 'none';
   document.getElementById('detFechaPresentacionWrap').style.display = 'none';
   document.getElementById('btnImprimirVeredicto').style.display = 'none';
   document.getElementById('bloque16PF').style.display = 'none';
@@ -3851,6 +3915,7 @@ function cargarSeccionPsicometriaCandidato(c){
     if(c.cleaverInfo){
       renderCleaverResultado(c.cleaverInfo);
     }
+    renderReglasCleaverUI();
   }
 
   // Otras pruebas — el selector solo lista las que fueron asignadas a este puesto
