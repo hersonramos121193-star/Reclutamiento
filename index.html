@@ -290,17 +290,18 @@
   .imp-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--navy);padding-bottom:14px;margin-bottom:20px;}
   .imp-header h1{font-size:19px;color:var(--navy);margin:0 0 4px;}
   .imp-header .imp-sub{font-size:12px;color:var(--text-dim);}
-  .imp-veredicto-grande{text-align:center;padding:20px;border-radius:10px;margin-bottom:24px;}
+  .imp-veredicto-grande{text-align:center;padding:30px 20px;border-radius:12px;margin-bottom:26px;}
   .imp-veredicto-grande.apto{background:#E6F3EB;}
   .imp-veredicto-grande.observaciones{background:#FBF1DC;}
   .imp-veredicto-grande.no-apto{background:#FAE7E5;}
-  .imp-veredicto-grande .imp-veredicto-texto{font-size:26px;font-weight:800;}
+  .imp-veredicto-grande .imp-veredicto-label{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;}
+  .imp-veredicto-grande .imp-veredicto-texto{font-size:40px;font-weight:800;line-height:1.15;}
   .imp-veredicto-grande.apto .imp-veredicto-texto{color:var(--ok);}
   .imp-veredicto-grande.observaciones .imp-veredicto-texto{color:#9A7414;}
   .imp-veredicto-grande.no-apto .imp-veredicto-texto{color:var(--crit);}
-  .imp-datos-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;margin-bottom:22px;font-size:13px;}
-  .imp-datos-grid .imp-label{font-size:10.5px;text-transform:uppercase;color:var(--text-dim);letter-spacing:.3px;}
-  .imp-datos-grid .imp-valor{font-weight:600;}
+  .imp-datos-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px 24px;margin-bottom:22px;font-size:14px;}
+  .imp-datos-grid .imp-label{font-size:11px;text-transform:uppercase;color:var(--text-dim);letter-spacing:.3px;}
+  .imp-datos-grid .imp-valor{font-weight:700;font-size:16.5px;color:var(--navy);}
   .imp-sintesis{font-size:14px;line-height:1.6;margin-bottom:20px;}
   .imp-sintesis p{margin:0 0 12px;}
   .imp-factores{margin-top:10px;}
@@ -3347,7 +3348,7 @@ function generarSintesisCleaver(datos){
     const contexto = CLEAVER_SECCION_CONTEXTO[sec] || sec;
     return `<strong>${contexto}:</strong> esta persona ${CLEAVER_DESCRIPCION[max].alto}. En cambio, ${CLEAVER_DESCRIPCION[min].bajo}.`;
   });
-  return frases.join('<br><br>') + '<br><br><em>Esta prueba todavía es solo de referencia — no afecta el resultado de apto/no apto hasta que se defina un criterio de aprobación para ella.</em>';
+  return frases.join('<br><br>');
 }
 
 /* =========================================================
@@ -3581,7 +3582,9 @@ function fraseFactor(pid, factor, valor, esDura, regla){
   return `En <strong>${nombreFactor(pid, factor)}</strong> (${PRUEBAS_INFO[pid].nombre}) obtuvo un resultado ${comparacion}, lo cual indica que es una persona con ${significadoFactor(pid, factor, porArriba)}.`;
 }
 
-/** Arma un párrafo tipo "esta persona es/tiene..." con los factores que tienen regla definida en esa prueba. */
+/** Arma un párrafo breve tipo "esta persona es/tiene..." — solo con lo que realmente destaca
+ *  (se omiten los factores "equilibrados" porque no aportan nada al lector), máximo 3 puntos,
+ *  para que la síntesis sea corta y clara para cualquier persona, no una lista de todos los factores. */
 function generarPerfilConductual(valores, reglas, pid){
   if(!reglas) return '';
   const factoresUnicos = [...new Set([...(reglas.reglasDuras||[]).map(r=>r.factor), ...(reglas.reglasBlandas||[]).map(r=>r.factor)])];
@@ -3589,9 +3592,9 @@ function generarPerfilConductual(valores, reglas, pid){
     const v = valores[code];
     if(v === undefined || v === null || isNaN(v)) return null;
     return descripcionValorFactor(pid, code, v);
-  }).filter(Boolean);
+  }).filter(f => f && !f.startsWith('un nivel equilibrado')).slice(0, 3);
   if(frases.length === 0) return '';
-  let texto = 'Con base en los factores evaluados para este puesto, esta persona ';
+  let texto = 'Esta persona ';
   if(frases.length === 1){ texto += frases[0] + '.'; }
   else { texto += frases.slice(0,-1).join(', ') + ' y ' + frases[frases.length-1] + '.'; }
   return texto;
@@ -3829,22 +3832,21 @@ function abrirImpresionVeredicto(){
       <div class="imp-sub" style="text-align:right;">Generado el ${formatoFechaLegible(new Date().toISOString().slice(0,10))}</div>
     </div>
 
+    <div class="imp-veredicto-grande ${c.veredictoPsicometria.clase}">
+      <div class="imp-veredicto-label">Resultado</div>
+      <div class="imp-veredicto-texto">${c.veredictoPsicometria.veredicto}</div>
+    </div>
+
     <div class="imp-datos-grid">
       <div><div class="imp-label">Candidato</div><div class="imp-valor">${c.nombre}</div></div>
       <div><div class="imp-label">Puesto / Planta</div><div class="imp-valor">${vac.puesto} — ${vac.planta}</div></div>
       <div><div class="imp-label">Pruebas analizadas</div><div class="imp-valor">${pruebasAnalizadas.join(', ')}</div></div>
-      <div><div class="imp-label">Resultado global</div><div class="imp-valor">${c.veredictoPsicometria.veredicto}</div></div>
-    </div>
-
-    <div class="imp-veredicto-grande ${c.veredictoPsicometria.clase}">
-      <div style="font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim);">Resultado (basado en las pruebas con criterio definido)</div>
-      <div class="imp-veredicto-texto">${c.veredictoPsicometria.veredicto}</div>
     </div>
 
     ${bloques.join('')}
 
     <div class="imp-footer-nota">
-      Este documento es un resumen automatizado generado a partir de los resultados de ${pruebasAnalizadas.join(', ')} y del criterio de evaluación definido para el puesto de ${vac.puesto} en ${vac.planta}. El veredicto de apto/no apto se calcula únicamente con las pruebas que tienen un criterio de aprobación definido; las demás se incluyen como referencia. Este documento no sustituye el juicio profesional de Recursos Humanos ni constituye una evaluación clínica.
+      Resumen generado con base en el criterio de evaluación definido para ${vac.puesto} (${vac.planta}). El resultado de apto/no apto se calcula solo con las pruebas que tienen un criterio de aprobación definido para este puesto. Este documento no sustituye el juicio profesional de Recursos Humanos ni constituye una evaluación clínica.
     </div>
   `;
 
