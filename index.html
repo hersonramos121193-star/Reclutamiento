@@ -1058,7 +1058,7 @@
     <div class="sub-panel3" id="sub3-bajas" style="display:none;">
       <div class="card" style="border:1.5px solid var(--navy);">
         <h2>☁️ Sincronización con el equipo (Google Sheets)</h2>
-        <div class="desc">Este catálogo y su seguimiento de bajas viven en este navegador hasta que se sincronizan. Usa "Guardar en la nube" para subir lo que tienes aquí al Google Sheet compartido, y "Cargar desde la nube" para traer la versión más reciente que haya guardado alguien más del equipo. Configura primero la conexión en la pestaña "Conexión" (mismo URL/token que usan los demás módulos).</div>
+        <div class="desc">Cada vez que agregas o modificas algo aquí, se sube solo al Google Sheet compartido unos segundos después (verás el punto pasar a "Sincronizando…" y luego a verde). "Guardar en la nube" fuerza una subida inmediata; "Cargar desde la nube" trae la versión más reciente que haya guardado alguien más del equipo (reemplaza lo que tengas en este navegador). Configura primero la conexión en la pestaña "Conexión" (mismo URL/token que usan los demás módulos).</div>
         <div class="conexion-estado-box sin-config" id="rotacionNubeEstadoBox" style="margin-bottom:14px;">
           <span class="dot off" id="rotacionNubeDot"></span>
           <span id="rotacionNubeTexto">Sin sincronizar todavía.</span>
@@ -1198,7 +1198,7 @@
 
     <div class="card">
       <h2>☁️ Sincronización de Reclutamiento (Vacantes y Candidatos)</h2>
-      <div class="desc">Las vacantes y el catálogo de candidatos viven en este navegador hasta que los sincronizas. Usa "Guardar en la nube" para subir lo que tienes aquí, o "Cargar desde la nube" para traer lo que ya guardó alguien más del equipo. Usa la misma URL/token configurados arriba.</div>
+      <div class="desc">Cada vez que agregas o modificas algo aquí, se sube solo a tu Google Sheet unos segundos después (verás el punto pasar a "Sincronizando…" y luego a verde). "Guardar en la nube" fuerza una subida inmediata; "Cargar desde la nube" trae lo que ya guardó alguien más del equipo (reemplaza lo que tengas en este navegador). Usa la misma URL/token configurados arriba.</div>
       <div id="reclutamientoNubeEstadoBox" class="conexion-estado-box sin-config" style="margin:12px 0;">
         <span class="dot off gris" id="reclutamientoNubeDot"></span>
         <span id="reclutamientoNubeTexto">Aún no se ha sincronizado en este navegador.</span>
@@ -1530,6 +1530,7 @@ document.getElementById('btnGuardarConexion').addEventListener('click', async ()
   const resultado = await probarConexionJSONP(url, token);
   if(resultado.ok){
     actualizarIndicadorConexion('conectado', 'Conectado — los datos se están sincronizando con tu Google Sheet.');
+    programarAutoSincronizacionNube(); // sube de inmediato lo que ya tengas localmente, ahora que hay conexión
   } else {
     actualizarIndicadorConexion('error', 'Se guardó, pero no se pudo conectar: ' + (resultado.error || 'revisa la URL y el token.'));
   }
@@ -1628,6 +1629,60 @@ function loadLocal(){
 }
 function saveLocal(state){
   localStorage.setItem(CONFIG.LOCAL_KEY, JSON.stringify(state));
+  programarAutoSincronizacionNube();
+}
+
+/* =========================================================
+   Auto-sincronización con Google Sheets (Rotación + Reclutamiento)
+   Cada vez que se guarda algo localmente (saveLocal), se agenda una subida
+   automática a la nube unos segundos después — así no hace falta presionar
+   "Guardar en la nube" manualmente. Se usa un debounce para no disparar una
+   subida por cada tecla/click cuando hay varios cambios seguidos.
+   NOTA: mientras se está "Cargando desde la nube" (sincronizandoDesdeNube=true)
+   se omite, para no re-subir inmediatamente lo que se acaba de descargar. ========================================================= */
+let temporizadorAutoSyncNube = null;
+let sincronizandoDesdeNube = false;
+
+function programarAutoSincronizacionNube(){
+  if(sincronizandoDesdeNube) return;
+  if(typeof CONFIG === 'undefined') return;
+  const url = CONFIG.APPS_SCRIPT_URL;
+  const token = typeof getToken === 'function' ? getToken() : '';
+  if(!url || !token) return; // sin conexión configurada todavía: nada que auto-sincronizar
+  clearTimeout(temporizadorAutoSyncNube);
+  temporizadorAutoSyncNube = setTimeout(autoSincronizarNube, 2500);
+}
+
+async function autoSincronizarNube(){
+  const url = CONFIG.APPS_SCRIPT_URL;
+  const token = getToken();
+  if(!url || !token) return;
+
+  if(document.getElementById('rotacionNubeEstadoBox')){
+    actualizarEstadoNubeRotacion('cargando', 'Sincronizando automáticamente…');
+    const payloadRotacion = { catalogoEmpleados: STATE.catalogoEmpleados||[], seguimientoBajas: STATE.seguimientoBajas||[] };
+    try{
+      const rRot = await enviarPostPorIframe(url, { action:'guardarRotacionData', token, data: JSON.stringify(payloadRotacion) });
+      if(rRot.ok){
+        actualizarEstadoNubeRotacion('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
+      } else {
+        actualizarEstadoNubeRotacion('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
+      }
+    } catch(e){ console.error('Error en auto-sincronización de Rotación:', e); }
+  }
+
+  if(document.getElementById('reclutamientoNubeEstadoBox')){
+    actualizarEstadoNubeReclutamiento('cargando', 'Sincronizando automáticamente…');
+    const payloadReclutamiento = { vacantes: STATE.vacantes||[], candidatos: STATE.candidatos||[] };
+    try{
+      const rRec = await enviarPostPorIframe(url, { action:'guardarReclutamientoData', token, data: JSON.stringify(payloadReclutamiento) });
+      if(rRec.ok){
+        actualizarEstadoNubeReclutamiento('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
+      } else {
+        actualizarEstadoNubeReclutamiento('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
+      }
+    } catch(e){ console.error('Error en auto-sincronización de Reclutamiento:', e); }
+  }
 }
 
 let STATE = loadLocal();
@@ -3949,7 +4004,9 @@ document.getElementById('btnCargarRotacionNube').addEventListener('click', async
     STATE.catalogoEmpleados = resultado.catalogoEmpleados || [];
     STATE.seguimientoBajas = resultado.seguimientoBajas || [];
     STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+    sincronizandoDesdeNube = true;
     saveLocal(STATE);
+    sincronizandoDesdeNube = false;
     try{
       actualizarResumenCatalogoEmpleados();
       paginaBajas = 1; poblarFiltroAnioBajas(); renderBajasSeguimiento();
@@ -4034,7 +4091,9 @@ document.getElementById('btnCargarReclutamientoNube').addEventListener('click', 
   if(resultado.ok){
     STATE.vacantes = resultado.vacantes || [];
     STATE.candidatos = resultado.candidatos || [];
+    sincronizandoDesdeNube = true;
     saveLocal(STATE);
+    sincronizandoDesdeNube = false;
     try{
       refreshCargaLists();
       populateVacanteSelect();
