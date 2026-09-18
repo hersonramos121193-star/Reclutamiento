@@ -3905,12 +3905,17 @@ function ajustarImpresionUnaHoja(){
   // el listener de "afterprint" más abajo lo vuelve a ocultar al terminar.
   el.style.cssText = `display:block; position:fixed; top:0; left:-99999px; width:${ANCHO_DISPONIBLE_MM}mm; zoom:1;`;
 
+  // Mide el alto natural (a tamaño completo, zoom 1) UNA sola vez. No se puede volver a medir con
+  // "scrollHeight" después de aplicar "zoom" para ir ajustando poco a poco — en la práctica ese valor
+  // no cambia de forma confiable con el zoom ya aplicado, así que en vez de un ciclo de prueba y error
+  // se calcula directamente la proporción necesaria a partir de esta única medición.
+  const alturaNatural = el.scrollHeight;
   let zoom = 1;
-  let intentos = 0;
-  while(el.scrollHeight > ALTURA_DISPONIBLE_PX && zoom > 0.4 && intentos < 30){
-    zoom -= 0.02;
+  if(alturaNatural > ALTURA_DISPONIBLE_PX){
+    // Pequeño margen (2%) de seguridad porque el texto no siempre reduce su alto de forma perfectamente
+    // lineal al encogerse (por los saltos de línea que se recalculan a otro tamaño).
+    zoom = Math.max(0.5, (ALTURA_DISPONIBLE_PX / alturaNatural) * 0.98);
     el.style.zoom = zoom;
-    intentos++;
   }
 
   // Ya medido y ajustado: lo regresa al flujo normal del documento (la impresión real usa el CSS de
