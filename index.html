@@ -1546,9 +1546,81 @@ async function verificarConexionAlCargar(){
   const resultado = await probarConexionJSONP(url, token);
   if(resultado.ok){
     actualizarIndicadorConexion('conectado', 'Conectado — los datos se están sincronizando con tu Google Sheet.');
+    autoDescargarSiNavegadorNuevo(url, token);
   } else {
     actualizarIndicadorConexion('error', 'No se pudo conectar: ' + (resultado.error || 'revisa la URL y el token.'));
   }
+}
+
+/* =========================================================
+   AUTO-DESCARGA EN NAVEGADOR/EQUIPO NUEVO
+   Cuando este mismo Apps Script (misma URL+token) ya está conectado pero
+   este NAVEGADOR en particular nunca ha bajado datos de la nube (por ej.
+   se abrió por primera vez en otra computadora) y además no tiene datos
+   reales capturados todavía (solo lo vacío o la demo de fábrica), se trae
+   automáticamente lo último guardado por el equipo — así no hace falta
+   acordarse de presionar "Cargar desde la nube" cada vez que se abre la
+   app en un equipo distinto. Si el navegador YA tiene datos reales
+   capturados, no se toca nada automáticamente (para no perder trabajo sin
+   avisar) — en ese caso "Cargar desde la nube" sigue siendo manual.
+   El flag se guarda con la URL del Apps Script como parte de la llave,
+   para que conectarse a un Sheet distinto vuelva a ofrecer la auto-carga. */
+function marcaAutoDescarga_(modulo, url){
+  return 'reclutamiento_autodescarga_' + modulo + '_' + url;
+}
+function pareceVacioODemo_(lista, demo){
+  if(!lista || lista.length === 0) return true;
+  if(demo && lista.length === demo.length){
+    try{ return JSON.stringify(lista.map(x=>x.id).sort()) === JSON.stringify(demo.map(x=>x.id).sort()); }catch(e){ return false; }
+  }
+  return false;
+}
+async function autoDescargarSiNavegadorNuevo(url, token){
+  sincronizandoDesdeNube = true;
+  try{
+    // Rotación (catálogo de empleados + seguimiento de bajas) — no tiene datos "demo", solo vacío
+    const yaRotacion = localStorage.getItem(marcaAutoDescarga_('rotacion', url));
+    const rotacionLuceVacia = (!STATE.catalogoEmpleados || STATE.catalogoEmpleados.length===0) && (!STATE.seguimientoBajas || STATE.seguimientoBajas.length===0);
+    if(!yaRotacion && rotacionLuceVacia){
+      const r = await leerRotacionDesdeSheetJSONP(url, token);
+      if(r.ok && ((r.catalogoEmpleados&&r.catalogoEmpleados.length) || (r.seguimientoBajas&&r.seguimientoBajas.length))){
+        STATE.catalogoEmpleados = r.catalogoEmpleados || [];
+        STATE.seguimientoBajas = r.seguimientoBajas || [];
+        STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+        saveLocal(STATE);
+        try{
+          actualizarResumenCatalogoEmpleados();
+          paginaBajas = 1; poblarFiltroAnioBajas(); renderBajasSeguimiento();
+          poblarFiltroAnioPermanencia(); renderPermanencia();
+          renderResumenRotacion();
+        } catch(e){ console.error('Error repintando después de auto-descarga de Rotación:', e); }
+        actualizarEstadoNubeRotacion('ok', `☁️ Traído automáticamente de la nube (nuevo equipo): ${STATE.catalogoEmpleados.length} empleado(s).`);
+      }
+      localStorage.setItem(marcaAutoDescarga_('rotacion', url), '1');
+    }
+
+    // Reclutamiento (vacantes + candidatos) — el navegador "nuevo" arranca con la demo de fábrica,
+    // así que "vacío" aquí significa vacío de verdad O exactamente igual a la demo.
+    const yaReclutamiento = localStorage.getItem(marcaAutoDescarga_('reclutamiento', url));
+    const reclutamientoLuceVacio = pareceVacioODemo_(STATE.vacantes, DEMO.vacantes) && pareceVacioODemo_(STATE.candidatos, DEMO.candidatos);
+    if(!yaReclutamiento && reclutamientoLuceVacio){
+      const r = await leerReclutamientoDesdeSheetJSONP(url, token);
+      if(r.ok && ((r.vacantes&&r.vacantes.length) || (r.candidatos&&r.candidatos.length))){
+        STATE.vacantes = r.vacantes || [];
+        STATE.candidatos = r.candidatos || [];
+        saveLocal(STATE);
+        try{
+          refreshCargaLists();
+          populateVacanteSelect();
+          renderResumen();
+          if(document.getElementById('tblCatalogoCandidatos')) renderCatalogo();
+        } catch(e){ console.error('Error repintando después de auto-descarga de Reclutamiento:', e); }
+        actualizarEstadoNubeReclutamiento('ok', `☁️ Traído automáticamente de la nube (nuevo equipo): ${STATE.vacantes.length} vacante(s), ${STATE.candidatos.length} candidato(s).`);
+      }
+      localStorage.setItem(marcaAutoDescarga_('reclutamiento', url), '1');
+    }
+  } catch(e){ console.error('Error en auto-descarga de navegador nuevo:', e); }
+  finally{ sincronizandoDesdeNube = false; }
 }
 
 function cargarValoresGuardadosEnFormularioConexion(){
