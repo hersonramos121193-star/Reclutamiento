@@ -697,8 +697,8 @@
       <label>Etapa actual</label>
       <select id="catEtapa">
         <option value="">Todas</option>
-        <option>Recepción CV</option><option>Filtro telefónico</option><option>Entrevista RH</option>
-        <option>Entrevista jefe directo</option><option>Examen / psicométrico</option><option>Oferta</option>
+        <option>Prueba práctica</option><option>Exámenes médicos</option><option>Entrevista RH</option>
+        <option>Entrevista jefe directo</option><option>Examen psicométrico</option><option>Oferta</option>
         <option>Contratación</option><option>Descartado</option>
       </select>
     </div>
@@ -738,8 +738,8 @@
           <div class="form-field">
             <label>Mover a nueva etapa</label>
             <select id="detNuevaEtapa">
-              <option>Recepción CV</option><option>Filtro telefónico</option><option>Entrevista RH</option>
-              <option>Entrevista jefe directo</option><option>Examen / psicométrico</option><option>Oferta</option><option>Contratación</option>
+              <option>Prueba práctica</option><option>Exámenes médicos</option><option>Entrevista RH</option>
+              <option>Entrevista jefe directo</option><option>Examen psicométrico</option><option>Oferta</option><option>Contratación</option>
               <option>Descartado</option>
             </select>
           </div>
@@ -880,8 +880,8 @@
         <div class="form-field"><label>Fecha de postulación *</label><input type="date" id="cFecha"></div>
         <div class="form-field"><label>Etapa actual</label>
           <select id="cEtapa">
-            <option>Recepción CV</option><option>Filtro telefónico</option><option>Entrevista RH</option>
-            <option>Entrevista jefe directo</option><option>Examen / psicométrico</option><option>Oferta</option><option>Contratación</option>
+            <option>Prueba práctica</option><option>Exámenes médicos</option><option>Entrevista RH</option>
+            <option>Entrevista jefe directo</option><option>Examen psicométrico</option><option>Oferta</option><option>Contratación</option>
             <option>Descartado</option>
           </select>
         </div>
@@ -1607,11 +1607,11 @@ const DEMO = {
   ],
   candidatos: [
     {id:"c1", nombre:"José Luis Martínez", vacanteId:"d1", fuente:"Bolsa de trabajo", fechaPostulacion:"2025-08-01", etapaActual:"Entrevista jefe directo",
-      historial:[{fecha:"2025-08-01",etapa:"Recepción CV"},{fecha:"2025-08-04",etapa:"Filtro telefónico"},{fecha:"2025-08-10",etapa:"Entrevista jefe directo"}]},
+      historial:[{fecha:"2025-08-01",etapa:"Prueba práctica"},{fecha:"2025-08-04",etapa:"Exámenes médicos"},{fecha:"2025-08-10",etapa:"Entrevista jefe directo"}]},
     {id:"c2", nombre:"Ana Beatriz López", vacanteId:"d9", fuente:"Bolsa de trabajo", fechaPostulacion:"2025-06-12", etapaActual:"Contratación",
-      historial:[{fecha:"2025-06-12",etapa:"Recepción CV"},{fecha:"2025-06-28",etapa:"Contratación",observaciones:"Asignado a cubrir plaza de: Auxiliar de Almacén"}]},
+      historial:[{fecha:"2025-06-12",etapa:"Prueba práctica"},{fecha:"2025-06-28",etapa:"Contratación",observaciones:"Asignado a cubrir plaza de: Auxiliar de Almacén"}]},
     {id:"c3", nombre:"Marco Aurelio Díaz", vacanteId:"d9", fuente:"Bolsa de trabajo", fechaPostulacion:"2025-06-15", etapaActual:"Contratación",
-      historial:[{fecha:"2025-06-15",etapa:"Recepción CV"},{fecha:"2025-07-02",etapa:"Contratación",observaciones:"Asignado a cubrir plaza de: Auxiliar de Almacén"}]},
+      historial:[{fecha:"2025-06-15",etapa:"Prueba práctica"},{fecha:"2025-07-02",etapa:"Contratación",observaciones:"Asignado a cubrir plaza de: Auxiliar de Almacén"}]},
   ],
   contratadosMes: 8
 };
@@ -1745,7 +1745,7 @@ function semaforoInfo(dias){
 function pillClass(status){
   return {"Abierta":"abierta","En proceso":"proceso","Cerrada":"cerrada","Cancelada":"cancelada"}[status] || "abierta";
 }
-const ORDEN_ETAPAS = ["Recepción CV","Filtro telefónico","Entrevista RH","Entrevista jefe directo","Examen / psicométrico","Oferta","Contratación"];
+const ORDEN_ETAPAS = ["Prueba práctica","Exámenes médicos","Entrevista RH","Entrevista jefe directo","Examen psicométrico","Oferta","Contratación"];
 
 function candidatosDeVacante(vId){
   return STATE.candidatos.filter(c => c.vacanteId === vId);
@@ -2148,7 +2148,7 @@ function limpiarFormCandidato(){
   document.getElementById('cVacante').value='';
   document.getElementById('cFuente').value='Referido';
   document.getElementById('cFecha').value='';
-  document.getElementById('cEtapa').value='Recepción CV';
+  document.getElementById('cEtapa').value='Prueba práctica';
   document.getElementById('cTelefono').value='';
   document.getElementById('cNotas').value='';
 }
@@ -2559,6 +2559,20 @@ function etapaVigente(c){
   return ordenado[0].etapa;
 }
 
+/** "Días en proceso" para mostrar en catálogo/tablas: normalmente cuenta desde la fecha de postulación
+ *  hasta hoy, pero si el candidato ya llegó a "Contratación", deja de contar en la fecha que se le
+ *  puso a ese movimiento (no sigue sumando días después de que la persona ya fue contratada). */
+function diasEnProceso(c){
+  const ordenado = (c.historial && c.historial.length) ? [...c.historial].sort((a,b)=> new Date(b.fecha) - new Date(a.fecha)) : [];
+  const ultimo = ordenado[0];
+  if(ultimo && ultimo.etapa === 'Contratación'){
+    const f1 = new Date(c.fechaPostulacion + "T00:00:00");
+    const f2 = new Date(ultimo.fecha + "T00:00:00");
+    return Math.max(0, Math.floor((f2 - f1) / (1000*60*60*24)));
+  }
+  return diasDesde(c.fechaPostulacion);
+}
+
 function verDetalleCandidato(id){
   candidatoSeleccionadoId = id;
   movimientoEnEdicionIdx = null;
@@ -2695,7 +2709,7 @@ function verCandidatosDeVacante(vacanteId){
   } else {
     empty.style.display='none';
     tbody.innerHTML = cands.map(c=>{
-      const diasProceso = diasDesde(c.fechaPostulacion);
+      const diasProceso = diasEnProceso(c);
       const cubre = idsCubren.has(c.id);
       return `<tr style="cursor:pointer;" onclick="irAListadoCandidatosYVerDetalle('${c.id}')">
         <td><strong>${c.nombre}</strong>${cubre?'<span class="badge-local" style="background:#E6F3EB;color:var(--ok);">PLAZA CUBIERTA</span>':''}</td>
@@ -2747,7 +2761,7 @@ function renderCatalogo(){
 
   tbody.innerHTML = lista.map(c=>{
     const vac = STATE.vacantes.find(v=>v.id===c.vacanteId);
-    const diasProceso = diasDesde(c.fechaPostulacion);
+    const diasProceso = diasEnProceso(c);
     const cubre = vac && plazasCubiertas(vac).some(p=>p.candidatoId===c.id);
     return `<tr style="cursor:pointer;" onclick="irAListadoCandidatosYVerDetalle('${c.id}')">
       <td><strong>${c.nombre}</strong>${c.origenLocal?'<span class="badge-local">MANUAL</span>':''}${cubre?'<span class="badge-local" style="background:#E6F3EB;color:var(--ok);">PLAZA CUBIERTA</span>':''}${badgeVeredictoHTML(c)}</td>
@@ -3184,14 +3198,17 @@ function parsearFactoresGenerico(texto, factores, maxGap){
       return;
     }
     const nombreEsc = f.nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // \b al inicio y al final evita que, por ejemplo, "Reservado" haga match dentro de "Reservados"
+    // (como en "Derechos Reservados" del pie de página) y agarre por error un número que no es el
+    // del factor — eso pasaba con el factor "A - Reservado" en reportes de PeopleCloud HRM.
     // El hueco entre el nombre del factor y su número puede incluir un salto de línea
     // (reportes en tabla donde la etiqueta y el valor no siempre quedan en el mismo renglón).
-    const patron = nombreEsc + '[^0-9]{0,' + maxGap + '}?(\\d{1,3})';
+    const patron = '\\b' + nombreEsc + '\\b' + '[^0-9]{0,' + maxGap + '}?(\\d{1,3})';
     let m = texto.match(new RegExp(patron, 'i'));
     if(!m){
       // Reintenta comparando sin acentos, por si el PDF los perdió al extraer el texto.
       const nombreSinAcentos = quitarAcentos_(f.nombre).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      m = textoSinAcentos.match(new RegExp(nombreSinAcentos + '[^0-9]{0,' + maxGap + '}?(\\d{1,3})', 'i'));
+      m = textoSinAcentos.match(new RegExp('\\b' + nombreSinAcentos + '\\b' + '[^0-9]{0,' + maxGap + '}?(\\d{1,3})', 'i'));
     }
     if(m){
       const val = parseInt(m[1]);
