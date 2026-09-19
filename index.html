@@ -235,13 +235,21 @@
   .regla-row select, .regla-row input{padding:6px 8px;font-size:12.5px;border:1px solid #D3D6D9;border-radius:6px;}
   .regla-row .quitar-regla{background:none;border:none;color:var(--crit);cursor:pointer;font-size:12px;font-weight:600;}
 
-  .criterio-card{border:1px solid #E4E6E8;border-radius:10px;padding:16px;margin-bottom:14px;}
-  .criterio-card h3{margin:0 0 2px;font-size:14px;color:var(--navy);}
-  .criterio-card .sub{font-size:11.5px;color:var(--text-dim);margin-bottom:10px;}
+  .criterio-card{border:1px solid #E4E6E8;border-radius:10px;padding:0;margin-bottom:10px;overflow:hidden;}
+  .criterio-card-header{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;user-select:none;}
+  .criterio-card-header:hover{background:#FAFBFC;}
+  .criterio-card-header h3{margin:0;font-size:14px;color:var(--navy);flex:1;}
+  .criterio-card-header .sub{font-size:11.5px;color:var(--text-dim);flex:none;}
+  .criterio-card-caret{font-size:12px;color:var(--text-dim);flex:none;width:14px;text-align:center;}
+  .criterio-card-body{padding:0 16px 16px;border-top:1px solid #EEF0F1;}
   .criterio-card .regla-lista{font-size:12px;color:var(--text-dim);margin:4px 0;}
   .criterio-card .regla-lista strong{color:var(--text);}
   .criterio-card .prueba-subgrupo{margin-top:10px;padding-top:8px;border-top:1px dashed #E4E6E8;}
   .criterio-card .prueba-subgrupo-titulo{font-size:12px;font-weight:700;color:var(--teal-dk);margin-bottom:2px;}
+  @media (max-width:640px){
+    .criterio-card-header{flex-wrap:wrap;}
+    .criterio-card-header .sub{width:100%;}
+  }
 
   .prueba-criterio-section{border:1px solid #E4E6E8;border-radius:10px;margin:14px 0;overflow:hidden;}
   .prueba-criterio-section .pcs-header{
@@ -892,9 +900,13 @@
     <!-- LISTADO de criterios -->
     <div class="card sub-panel2" id="sub2-criterios">
       <h2>Criterios de aprobación por puesto y planta</h2>
-      <div class="desc">Cada puesto puede tener su propio criterio, incluso en distintas plantas. Estos criterios se usan automáticamente cuando cargues una psicometría en el expediente de un candidato.</div>
+      <div class="desc">Cada puesto puede tener su propio criterio, incluso en distintas plantas. Estos criterios se usan automáticamente cuando cargues una psicometría en el expediente de un candidato. Haz clic en un puesto para ver o editar sus reglas.</div>
+      <div class="form-field" style="max-width:340px;margin-bottom:14px;">
+        <input type="text" id="buscarCriterio" placeholder="🔎 Buscar puesto o planta…" oninput="renderCriterios()">
+      </div>
       <div id="listaCriterios"></div>
       <div class="empty-state" id="emptyCriterios" style="display:none;">Aún no hay criterios definidos. Usa "+ Nuevo criterio".</div>
+      <div class="empty-state" id="sinResultadosCriterios" style="display:none;">Ningún puesto coincide con la búsqueda.</div>
     </div>
 
     <!-- FORM: nuevo / editar criterio -->
@@ -2835,18 +2847,40 @@ function contarReglas(cr){
   return {duras, blandas};
 }
 
+// Recuerda qué tarjetas de criterio quedaron abiertas entre un re-render y otro (ej. al escribir en el buscador),
+// para que no se cierren solas mientras el usuario está viendo/editando las reglas de un puesto.
+const criteriosAbiertos = new Set();
+function toggleCriterioCard(id){
+  if(criteriosAbiertos.has(id)) criteriosAbiertos.delete(id); else criteriosAbiertos.add(id);
+  renderCriterios();
+}
 function renderCriterios(){
   const wrap = document.getElementById('listaCriterios');
   const empty = document.getElementById('emptyCriterios');
+  const sinResultados = document.getElementById('sinResultadosCriterios');
   const lista = STATE.criteriosPsicometria || [];
   if(lista.length === 0){
-    wrap.innerHTML = ''; empty.style.display = 'block';
+    wrap.innerHTML = ''; empty.style.display = 'block'; sinResultados.style.display = 'none';
     return;
   }
   empty.style.display = 'none';
-  wrap.innerHTML = lista.map(cr => {
+
+  const buscarInput = document.getElementById('buscarCriterio');
+  const busqueda = (buscarInput ? buscarInput.value : '').toLowerCase().trim();
+  const listaFiltrada = busqueda
+    ? lista.filter(cr => (cr.puesto||'').toLowerCase().includes(busqueda) || (cr.planta||'').toLowerCase().includes(busqueda))
+    : lista;
+
+  if(listaFiltrada.length === 0){
+    wrap.innerHTML = ''; sinResultados.style.display = 'block';
+    return;
+  }
+  sinResultados.style.display = 'none';
+
+  wrap.innerHTML = listaFiltrada.map(cr => {
     const {duras, blandas} = contarReglas(cr);
     const asignadas = cr.pruebasAsignadas || [];
+    const abierto = criteriosAbiertos.has(cr.id);
     const bloquesPrueba = asignadas.map(pid => {
       const p = (cr.pruebas||{})[pid];
       const tieneReglas = p && ((p.reglasDuras||[]).length>0 || (p.reglasBlandas||[]).length>0);
@@ -2860,13 +2894,19 @@ function renderCriterios(){
     }).join('');
     return `
     <div class="criterio-card">
-      <h3>${cr.puesto} <span style="color:var(--text-dim);font-weight:400;">— ${cr.planta}</span></h3>
-      <div class="sub">${asignadas.length} psicometría${asignadas.length!==1?'s':''} asignada${asignadas.length!==1?'s':''} · ${duras} regla${duras!==1?'s':''} dura${duras!==1?'s':''} · ${blandas} regla${blandas!==1?'s':''} blanda${blandas!==1?'s':''}</div>
-      ${bloquesPrueba || '<div class="regla-lista">Sin psicometrías asignadas todavía.</div>'}
-      <div class="row-actions" style="margin-top:10px;">
-        <button onclick="editarCriterio('${cr.id}')">Editar</button>
-        <button onclick="eliminarCriterio('${cr.id}')">Eliminar</button>
+      <div class="criterio-card-header" onclick="toggleCriterioCard('${cr.id}')">
+        <h3>${cr.puesto} <span style="color:var(--text-dim);font-weight:400;">— ${cr.planta}</span></h3>
+        <span class="criterio-card-caret">${abierto ? '▾' : '▸'}</span>
       </div>
+      ${abierto ? `
+      <div class="criterio-card-body">
+        <div class="sub" style="margin:6px 0 4px;">${asignadas.length} psicometría${asignadas.length!==1?'s':''} asignada${asignadas.length!==1?'s':''} · ${duras} regla${duras!==1?'s':''} dura${duras!==1?'s':''} · ${blandas} regla${blandas!==1?'s':''} blanda${blandas!==1?'s':''}</div>
+        ${bloquesPrueba || '<div class="regla-lista">Sin psicometrías asignadas todavía.</div>'}
+        <div class="row-actions" style="margin-top:10px;">
+          <button onclick="event.stopPropagation();editarCriterio('${cr.id}')">Editar</button>
+          <button onclick="event.stopPropagation();eliminarCriterio('${cr.id}')">Eliminar</button>
+        </div>
+      </div>` : ''}
     </div>
   `;
   }).join('');
