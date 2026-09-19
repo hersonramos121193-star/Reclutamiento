@@ -494,8 +494,8 @@
       <label>Fuente</label>
       <select id="fFuente">
         <option value="">Todas</option>
-        <option>Bolsa de trabajo</option><option>Referido</option><option>Agencia</option>
-        <option>Redes sociales</option><option>Universidad</option>
+        <option>Referido</option><option>Solicitud de empleo</option><option>Agencia</option>
+        <option>Feria del empleo</option><option>Publicación en redes</option><option>Estatal del empleo</option>
       </select>
     </div>
     <div style="margin-left:auto;display:flex;gap:10px;align-items:flex-end;">
@@ -611,8 +611,8 @@
         </div>
         <div class="form-field"><label>Fuente principal</label>
           <select id="vFuente">
-            <option>Bolsa de trabajo</option><option>Referido</option><option>Agencia</option>
-            <option>Redes sociales</option><option>Universidad</option>
+            <option>Referido</option><option>Solicitud de empleo</option><option>Agencia</option>
+            <option>Feria del empleo</option><option>Publicación en redes</option><option>Estatal del empleo</option>
           </select>
         </div>
         <div class="form-field"><label>Vacantes a cubrir</label><input type="number" id="vNumVacantes" value="1" min="1"></div>
@@ -689,8 +689,8 @@
       <label>Fuente</label>
       <select id="catFuente">
         <option value="">Todas</option>
-        <option>Bolsa de trabajo</option><option>Referido</option><option>Agencia</option>
-        <option>Redes sociales</option><option>Universidad</option>
+        <option>Referido</option><option>Solicitud de empleo</option><option>Agencia</option>
+        <option>Feria del empleo</option><option>Publicación en redes</option><option>Estatal del empleo</option>
       </select>
     </div>
     <div>
@@ -727,6 +727,13 @@
       <div id="candidatoDetalle" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid #EDEEEF;">
         <h2 id="detNombre" style="margin-bottom:2px;"></h2>
         <div class="desc" id="detVacante"></div>
+        <div class="form-field" style="max-width:260px;margin:10px 0 16px;">
+          <label>Fuente del candidato</label>
+          <select id="detFuente">
+            <option>Referido</option><option>Solicitud de empleo</option><option>Agencia</option>
+            <option>Feria del empleo</option><option>Publicación en redes</option><option>Estatal del empleo</option>
+          </select>
+        </div>
         <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:6px;">
           <div class="form-field">
             <label>Mover a nueva etapa</label>
@@ -866,8 +873,8 @@
         <div class="form-field"><label>Vacante asociada *</label><select id="cVacante"><option value="">Selecciona una vacante…</option></select></div>
         <div class="form-field"><label>Fuente</label>
           <select id="cFuente">
-            <option>Bolsa de trabajo</option><option>Referido</option><option>Agencia</option>
-            <option>Redes sociales</option><option>Universidad</option>
+            <option>Referido</option><option>Solicitud de empleo</option><option>Agencia</option>
+            <option>Feria del empleo</option><option>Publicación en redes</option><option>Estatal del empleo</option>
           </select>
         </div>
         <div class="form-field"><label>Fecha de postulación *</label><input type="date" id="cFecha"></div>
@@ -2091,7 +2098,7 @@ function limpiarFormVacante(){
   document.getElementById('vSolicitante').value='';
   document.getElementById('vFecha').value='';
   document.getElementById('vStatus').value='Abierta';
-  document.getElementById('vFuente').value='Bolsa de trabajo';
+  document.getElementById('vFuente').value='Referido';
   document.getElementById('vNumVacantes').value='1';
   document.getElementById('vNotas').value='';
 }
@@ -2139,7 +2146,7 @@ document.getElementById('btnLimpiarCand').addEventListener('click', limpiarFormC
 function limpiarFormCandidato(){
   document.getElementById('cNombre').value='';
   document.getElementById('cVacante').value='';
-  document.getElementById('cFuente').value='Bolsa de trabajo';
+  document.getElementById('cFuente').value='Referido';
   document.getElementById('cFecha').value='';
   document.getElementById('cEtapa').value='Recepción CV';
   document.getElementById('cTelefono').value='';
@@ -2560,6 +2567,15 @@ function verDetalleCandidato(id){
   document.getElementById('detNombre').textContent = c.nombre;
   document.getElementById('detVacante').textContent = 'Vacante: ' + (vac ? `${vac.puesto} — ${vac.planta}` : 'no encontrada') +
     (c.telefono ? ` · Tel: ${c.telefono}` : '');
+  const selFuente = document.getElementById('detFuente');
+  // Si el candidato tiene una fuente guardada antigua que ya no está en la lista de opciones (ej. "Bolsa de
+  // trabajo" de antes de actualizar el catálogo de fuentes), se agrega temporalmente para no perderla de vista
+  // hasta que el usuario la cambie explícitamente por una de las nuevas opciones.
+  selFuente.querySelectorAll('option[data-temporal]').forEach(o=>o.remove());
+  if(c.fuente && !Array.from(selFuente.options).some(o=>o.value===c.fuente)){
+    selFuente.insertAdjacentHTML('afterbegin', `<option data-temporal="1">${c.fuente}</option>`);
+  }
+  selFuente.value = c.fuente || 'Referido';
   document.getElementById('detNuevaEtapa').value = c.etapaActual;
   document.getElementById('detFechaMovimiento').value = new Date().toISOString().slice(0,10);
   document.getElementById('detObsMovimiento').value = '';
@@ -2649,6 +2665,16 @@ document.getElementById('btnMoverEtapa').addEventListener('click', ()=>{
   refreshCargaLists();
   renderResumen();
   verDetalleCandidato(c.id);
+});
+
+document.getElementById('detFuente').addEventListener('change', ()=>{
+  if(!candidatoSeleccionadoId) return;
+  const c = STATE.candidatos.find(c=>c.id===candidatoSeleccionadoId);
+  if(!c) return;
+  c.fuente = document.getElementById('detFuente').value;
+  saveLocal(STATE);
+  if(document.getElementById('tblCatalogoCandidatos')) renderCatalogo();
+  renderResumen();
 });
 
 /* =========================================================
