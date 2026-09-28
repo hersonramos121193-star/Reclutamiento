@@ -429,6 +429,19 @@
     .sidebar-nav{display:flex;flex:none;padding-bottom:0;}
     .sidebar-section-title{display:none;}
   }
+
+  /* Modo solo lectura (?soloLectura=1 en la URL): bloquea toda acción que
+     pueda modificar o subir datos, incluyendo botones agregados después
+     por JS (renders dinámicos de tablas) — la regla es CSS, no por elemento. */
+  body.solo-lectura button, body.solo-lectura input[type="file"]{
+    pointer-events:none; opacity:.45; cursor:not-allowed;
+  }
+  body.solo-lectura .sidebar-item[data-view="conexion"]{ display:none; }
+  body.solo-lectura::before{
+    content:"👁️ Modo solo lectura — no se pueden guardar cambios";
+    display:block; background:#1F3A6E; color:#fff; text-align:center;
+    font-size:13px; font-weight:600; padding:6px; position:sticky; top:0; z-index:999;
+  }
 </style>
 </head>
 <body>
@@ -1473,6 +1486,13 @@
 </div> <!-- /app-layout -->
 
 <script>
+// Modo solo lectura: abrir el dashboard con ?soloLectura=1 al final de la URL
+// deshabilita todos los botones y la carga de archivos (ver CSS ".solo-lectura")
+// y oculta la pestaña de Conexión (para no exponer la URL/token del Apps Script).
+if(new URLSearchParams(location.search).get('soloLectura') === '1'){
+  document.body.classList.add('solo-lectura');
+}
+
 /* =========================================================
    CONFIGURACIÓN DE CONEXIÓN A GOOGLE SHEETS
    ========================================================= */
