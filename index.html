@@ -1587,6 +1587,9 @@ async function autoDescargarSiNavegadorNuevo(url, token){
         STATE.catalogoEmpleados = r.catalogoEmpleados || [];
         STATE.seguimientoBajas = r.seguimientoBajas || [];
         STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+        registrarConteoBueno_('rotacion', url, STATE.catalogoEmpleados.length + STATE.seguimientoBajas.length);
+        guardarSnapshot_('catalogoEmpleados', url, STATE.catalogoEmpleados, 'codigo');
+        guardarSnapshot_('seguimientoBajas', url, STATE.seguimientoBajas, 'codigo');
         saveLocal(STATE);
         try{
           actualizarResumenCatalogoEmpleados();
@@ -1608,6 +1611,9 @@ async function autoDescargarSiNavegadorNuevo(url, token){
       if(r.ok && ((r.vacantes&&r.vacantes.length) || (r.candidatos&&r.candidatos.length))){
         STATE.vacantes = r.vacantes || [];
         STATE.candidatos = r.candidatos || [];
+        registrarConteoBueno_('reclutamiento', url, STATE.vacantes.length + STATE.candidatos.length);
+        guardarSnapshot_('vacantes', url, STATE.vacantes, 'id');
+        guardarSnapshot_('candidatos', url, STATE.candidatos, 'id');
         saveLocal(STATE);
         try{
           refreshCargaLists();
@@ -1765,35 +1771,125 @@ function programarAutoSincronizacionNube(){
   temporizadorAutoSyncNube = setTimeout(autoSincronizarNube, 2500);
 }
 
+/* Marca del último tamaño "conocido bueno" (>0) que se subió o bajó de la nube,
+   por módulo y por URL. Sirve para detectar cuando los datos locales se
+   vaciaron (por el motivo que sea: caché borrado, navegador nuevo con el auto-
+   download aún en curso, un bug, etc.) y evitar que el auto-sync suba ese
+   vacío por encima de datos reales que ya existen en el Sheet. */
+function marcaUltimoConteoBueno_(modulo, url){
+  return 'reclutamiento_ultimo_conteo_bueno_' + modulo + '_' + url;
+}
+function registrarConteoBueno_(modulo, url, total){
+  if(total > 0) localStorage.setItem(marcaUltimoConteoBueno_(modulo, url), String(total));
+}
+function pareceVaciamientoSospechoso_(modulo, url, total){
+  if(total > 0) return false;
+  const ultimo = parseInt(localStorage.getItem(marcaUltimoConteoBueno_(modulo, url)) || '0', 10);
+  return ultimo > 0; // había datos reales antes y ahora local está en 0: no subas, es sospechoso
+}
+
+/* =========================================================
+   Merge por ID (para que 2 personas puedan editar el mismo Sheet
+   sin que la última en sincronizar borre los cambios de la otra).
+   En vez de subir "todo el arreglo, se reemplaza el Sheet completo",
+   cada registro sube con su propio _ts (timestamp de la última vez que
+   CAMBIÓ en este navegador) y el backend (Codigo.gs) mezcla por id,
+   quedándose con la versión más reciente de cada registro — nunca con
+   "lo que subió último" a ciegas. Los registros borrados localmente se
+   avisan aparte (arreglo "eliminados") para que el backend también los
+   borre del Sheet, en vez de que reaparezcan en el próximo merge.
+
+   El "snapshot" guardado en localStorage es la última versión de cada
+   arreglo que este navegador sabe que ya está sincronizada (subida o
+   bajada con éxito) — sirve para detectar qué registros cambiaron desde
+   entonces (se les pone _ts nuevo) y cuáles desaparecieron (se mandan
+   como eliminados). ========================================================= */
+function marcaSnapshot_(arregloNombre, url){
+  return 'reclutamiento_snapshot_' + arregloNombre + '_' + url;
+}
+function leerSnapshot_(arregloNombre, url){
+  try{ return JSON.parse(localStorage.getItem(marcaSnapshot_(arregloNombre, url)) || '{}'); }
+  catch(e){ return {}; }
+}
+function guardarSnapshot_(arregloNombre, url, lista, idField){
+  const snap = {};
+  (lista||[]).forEach(r=>{ if(r && r[idField]!=null) snap[String(r[idField])] = r; });
+  localStorage.setItem(marcaSnapshot_(arregloNombre, url), JSON.stringify(snap));
+}
+/** Compara la lista actual contra el snapshot: le pone _ts nuevo a lo que cambió o es nuevo,
+ *  conserva el _ts de lo que no cambió, y devuelve también los ids que ya no están (eliminados). */
+function prepararParaSubir_(arregloNombre, url, lista, idField){
+  const snap = leerSnapshot_(arregloNombre, url);
+  const idsActuales = new Set();
+  const registros = (lista||[]).map(r=>{
+    const id = r && r[idField]!=null ? String(r[idField]) : null;
+    if(id === null) return r; // sin id: no se puede mergear con seguridad, se sube tal cual
+    idsActuales.add(id);
+    const anterior = snap[id];
+    const sinCambio = anterior && JSON.stringify({...anterior, _ts:undefined}) === JSON.stringify({...r, _ts:undefined});
+    return { ...r, _ts: sinCambio ? (anterior._ts || Date.now()) : Date.now() };
+  });
+  const eliminados = Object.keys(snap)
+    .filter(id => !idsActuales.has(id))
+    .map(id => ({ id, _ts: Date.now() }));
+  return { registros, eliminados };
+}
+
 async function autoSincronizarNube(){
   const url = CONFIG.APPS_SCRIPT_URL;
   const token = getToken();
   if(!url || !token) return;
 
   if(document.getElementById('rotacionNubeEstadoBox')){
-    actualizarEstadoNubeRotacion('cargando', 'Sincronizando automáticamente…');
-    const payloadRotacion = { catalogoEmpleados: STATE.catalogoEmpleados||[], seguimientoBajas: STATE.seguimientoBajas||[] };
-    try{
-      const rRot = await enviarPostPorIframe(url, { action:'guardarRotacionData', token, data: JSON.stringify(payloadRotacion) });
-      if(rRot.ok){
-        actualizarEstadoNubeRotacion('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
-      } else {
-        actualizarEstadoNubeRotacion('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
-      }
-    } catch(e){ console.error('Error en auto-sincronización de Rotación:', e); }
+    const totalRot = (STATE.catalogoEmpleados||[]).length + (STATE.seguimientoBajas||[]).length;
+    if(pareceVaciamientoSospechoso_('rotacion', url, totalRot)){
+      actualizarEstadoNubeRotacion('error', '⚠️ Se omitió la sincronización automática: los datos locales de Rotación están vacíos pero antes había datos. Usa "Cargar desde la nube" o revisa antes de "Guardar en la nube" manualmente.');
+    } else {
+      actualizarEstadoNubeRotacion('cargando', 'Sincronizando automáticamente…');
+      const prepCat = prepararParaSubir_('catalogoEmpleados', url, STATE.catalogoEmpleados||[], 'codigo');
+      const prepSeg = prepararParaSubir_('seguimientoBajas', url, STATE.seguimientoBajas||[], 'codigo');
+      const payloadRotacion = {
+        catalogoEmpleados: prepCat.registros, catalogoEmpleadosEliminados: prepCat.eliminados,
+        seguimientoBajas: prepSeg.registros, seguimientoBajasEliminados: prepSeg.eliminados
+      };
+      try{
+        const rRot = await enviarPostPorIframe(url, { action:'guardarRotacionData', token, data: JSON.stringify(payloadRotacion) });
+        if(rRot.ok){
+          registrarConteoBueno_('rotacion', url, totalRot);
+          guardarSnapshot_('catalogoEmpleados', url, prepCat.registros, 'codigo');
+          guardarSnapshot_('seguimientoBajas', url, prepSeg.registros, 'codigo');
+          actualizarEstadoNubeRotacion('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
+        } else {
+          actualizarEstadoNubeRotacion('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
+        }
+      } catch(e){ console.error('Error en auto-sincronización de Rotación:', e); }
+    }
   }
 
   if(document.getElementById('reclutamientoNubeEstadoBox')){
-    actualizarEstadoNubeReclutamiento('cargando', 'Sincronizando automáticamente…');
-    const payloadReclutamiento = { vacantes: STATE.vacantes||[], candidatos: STATE.candidatos||[] };
-    try{
-      const rRec = await enviarPostPorIframe(url, { action:'guardarReclutamientoData', token, data: JSON.stringify(payloadReclutamiento) });
-      if(rRec.ok){
-        actualizarEstadoNubeReclutamiento('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
-      } else {
-        actualizarEstadoNubeReclutamiento('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
-      }
-    } catch(e){ console.error('Error en auto-sincronización de Reclutamiento:', e); }
+    const totalRec = (STATE.vacantes||[]).length + (STATE.candidatos||[]).length;
+    if(pareceVaciamientoSospechoso_('reclutamiento', url, totalRec)){
+      actualizarEstadoNubeReclutamiento('error', '⚠️ Se omitió la sincronización automática: los datos locales de Reclutamiento están vacíos pero antes había datos. Usa "Cargar desde la nube" o revisa antes de "Guardar en la nube" manualmente.');
+    } else {
+      actualizarEstadoNubeReclutamiento('cargando', 'Sincronizando automáticamente…');
+      const prepVac = prepararParaSubir_('vacantes', url, STATE.vacantes||[], 'id');
+      const prepCand = prepararParaSubir_('candidatos', url, STATE.candidatos||[], 'id');
+      const payloadReclutamiento = {
+        vacantes: prepVac.registros, vacantesEliminados: prepVac.eliminados,
+        candidatos: prepCand.registros, candidatosEliminados: prepCand.eliminados
+      };
+      try{
+        const rRec = await enviarPostPorIframe(url, { action:'guardarReclutamientoData', token, data: JSON.stringify(payloadReclutamiento) });
+        if(rRec.ok){
+          registrarConteoBueno_('reclutamiento', url, totalRec);
+          guardarSnapshot_('vacantes', url, prepVac.registros, 'id');
+          guardarSnapshot_('candidatos', url, prepCand.registros, 'id');
+          actualizarEstadoNubeReclutamiento('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
+        } else {
+          actualizarEstadoNubeReclutamiento('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
+        }
+      } catch(e){ console.error('Error en auto-sincronización de Reclutamiento:', e); }
+    }
   }
 }
 
@@ -4339,16 +4435,24 @@ document.getElementById('btnGuardarRotacionNube').addEventListener('click', asyn
     return;
   }
   const cat = STATE.catalogoEmpleados || [];
-  if(!confirm(`Esto sube ${cat.length} empleado(s) y reemplaza por completo lo que haya guardado en el Google Sheet compartido (no se combina, se sobreescribe). ¿Confirmas que quieres guardar en la nube?`)) return;
+  if(!confirm(`Esto sube ${cat.length} empleado(s). Los cambios se combinan por empleado con lo que ya esté en el Google Sheet (no se pisa lo que haya agregado otra persona), pero un empleado que edites aquí sí prevalece sobre versiones más viejas de ese mismo empleado. ¿Confirmas que quieres guardar en la nube?`)) return;
 
   actualizarEstadoNubeRotacion('cargando', 'Guardando en la nube…');
-  const payload = { catalogoEmpleados: STATE.catalogoEmpleados||[], seguimientoBajas: STATE.seguimientoBajas||[] };
+  const prepCatM = prepararParaSubir_('catalogoEmpleados', url, STATE.catalogoEmpleados||[], 'codigo');
+  const prepSegM = prepararParaSubir_('seguimientoBajas', url, STATE.seguimientoBajas||[], 'codigo');
+  const payload = {
+    catalogoEmpleados: prepCatM.registros, catalogoEmpleadosEliminados: prepCatM.eliminados,
+    seguimientoBajas: prepSegM.registros, seguimientoBajasEliminados: prepSegM.eliminados
+  };
   const resultado = await enviarPostPorIframe(url, {
     action: 'guardarRotacionData',
     token: token,
     data: JSON.stringify(payload)
   });
   if(resultado.ok){
+    registrarConteoBueno_('rotacion', url, (STATE.catalogoEmpleados||[]).length + (STATE.seguimientoBajas||[]).length);
+    guardarSnapshot_('catalogoEmpleados', url, prepCatM.registros, 'codigo');
+    guardarSnapshot_('seguimientoBajas', url, prepSegM.registros, 'codigo');
     actualizarEstadoNubeRotacion('ok', 'Guardado en la nube el ' + new Date().toLocaleString('es-MX') + '.');
   } else {
     actualizarEstadoNubeRotacion('error', 'No se pudo confirmar el guardado. Revisa la URL/token en "Conexión" e inténtalo de nuevo.');
@@ -4370,6 +4474,9 @@ document.getElementById('btnCargarRotacionNube').addEventListener('click', async
     STATE.catalogoEmpleados = resultado.catalogoEmpleados || [];
     STATE.seguimientoBajas = resultado.seguimientoBajas || [];
     STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+    registrarConteoBueno_('rotacion', url, STATE.catalogoEmpleados.length + STATE.seguimientoBajas.length);
+    guardarSnapshot_('catalogoEmpleados', url, STATE.catalogoEmpleados, 'codigo');
+    guardarSnapshot_('seguimientoBajas', url, STATE.seguimientoBajas, 'codigo');
     sincronizandoDesdeNube = true;
     saveLocal(STATE);
     sincronizandoDesdeNube = false;
@@ -4427,16 +4534,24 @@ document.getElementById('btnGuardarReclutamientoNube').addEventListener('click',
   }
   const vac = STATE.vacantes || [];
   const cand = STATE.candidatos || [];
-  if(!confirm(`Esto sube ${vac.length} vacante(s) y ${cand.length} candidato(s) y reemplaza por completo lo que haya guardado en el Google Sheet compartido (no se combina, se sobreescribe). ¿Confirmas que quieres guardar en la nube?`)) return;
+  if(!confirm(`Esto sube ${vac.length} vacante(s) y ${cand.length} candidato(s). Los cambios se combinan por registro con lo que ya esté en el Google Sheet (no se pisa lo que haya agregado otra persona), pero un registro que edites aquí sí prevalece sobre versiones más viejas de ese mismo registro. ¿Confirmas que quieres guardar en la nube?`)) return;
 
   actualizarEstadoNubeReclutamiento('cargando', 'Guardando en la nube…');
-  const payload = { vacantes: vac, candidatos: cand };
+  const prepVacM = prepararParaSubir_('vacantes', url, vac, 'id');
+  const prepCandM = prepararParaSubir_('candidatos', url, cand, 'id');
+  const payload = {
+    vacantes: prepVacM.registros, vacantesEliminados: prepVacM.eliminados,
+    candidatos: prepCandM.registros, candidatosEliminados: prepCandM.eliminados
+  };
   const resultado = await enviarPostPorIframe(url, {
     action: 'guardarReclutamientoData',
     token: token,
     data: JSON.stringify(payload)
   });
   if(resultado.ok){
+    registrarConteoBueno_('reclutamiento', url, vac.length + cand.length);
+    guardarSnapshot_('vacantes', url, prepVacM.registros, 'id');
+    guardarSnapshot_('candidatos', url, prepCandM.registros, 'id');
     actualizarEstadoNubeReclutamiento('ok', 'Guardado en la nube el ' + new Date().toLocaleString('es-MX') + '.');
   } else {
     actualizarEstadoNubeReclutamiento('error', 'No se pudo confirmar el guardado. Revisa la URL/token en "Conexión" e inténtalo de nuevo.');
@@ -4457,6 +4572,9 @@ document.getElementById('btnCargarReclutamientoNube').addEventListener('click', 
   if(resultado.ok){
     STATE.vacantes = resultado.vacantes || [];
     STATE.candidatos = resultado.candidatos || [];
+    registrarConteoBueno_('reclutamiento', url, STATE.vacantes.length + STATE.candidatos.length);
+    guardarSnapshot_('vacantes', url, STATE.vacantes, 'id');
+    guardarSnapshot_('candidatos', url, STATE.candidatos, 'id');
     sincronizandoDesdeNube = true;
     saveLocal(STATE);
     sincronizandoDesdeNube = false;
