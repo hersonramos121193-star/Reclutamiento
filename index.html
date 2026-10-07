@@ -6,7 +6,8 @@
 <title>Reclutamiento · Metelmex</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- SheetJS 0.20.3 desde su CDN oficial: la 0.18.5 de cdnjs tiene fallas conocidas (CVE-2023-30533, CVE-2024-22363) y ya no se actualiza ahí -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --navy:#1F3A6E;
@@ -166,6 +167,7 @@
   .alert-list{display:flex;flex-direction:column;gap:10px;}
   .alert-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:8px;background:#FBF1F0;border-left:3px solid var(--crit);font-size:13px;}
   .alert-item.warn{background:#FCF6E7;border-left-color:var(--warn);}
+  .alert-item.ok{background:#EEF6F1;border-left-color:var(--ok);}
   .alert-item .days{font-weight:700;color:var(--navy);font-size:12.5px;}
 
   .funnel{display:flex;flex-direction:column;gap:6px;}
@@ -328,6 +330,9 @@
   .imp-resumen-item.apto .imp-resumen-punto{background:var(--ok);}
   .imp-resumen-item.observaciones .imp-resumen-punto{background:#9A7414;}
   .imp-resumen-item.no-apto .imp-resumen-punto{background:var(--crit);}
+  .imp-resumen-item.pendiente .imp-resumen-punto{background:var(--text-dim);}
+  .imp-veredicto-grande.pendiente{background:#EEF0F2;}
+  .imp-veredicto-grande.pendiente .imp-veredicto-texto{color:var(--text-dim);}
   .imp-alerta-no-apto{margin-top:12px;padding:12px 14px;background:#FAE7E5;border-left:4px solid var(--crit);border-radius:6px;font-size:13px;line-height:1.6;color:var(--text);}
   .imp-alerta-observaciones{margin-top:12px;padding:12px 14px;background:#FBF1DC;border-left:4px solid #9A7414;border-radius:6px;font-size:13px;line-height:1.6;color:var(--text);}
 
@@ -437,6 +442,13 @@
     pointer-events:none; opacity:.45; cursor:not-allowed;
   }
   body.solo-lectura .sidebar-item[data-view="conexion"]{ display:none; }
+  /* también bloquea capturas en tablas y formularios (los cambios ya no se guardan, pero así no confunden) */
+  body.solo-lectura main select, body.solo-lectura main input, body.solo-lectura main textarea,
+  body.solo-lectura .modal-overlay select, body.solo-lectura .modal-overlay input{ pointer-events:none; opacity:.6; }
+  /* navegación y filtros sí funcionan en solo lectura */
+  body.solo-lectura .subtabs button, body.solo-lectura .chevron-btn, body.solo-lectura #bajaPaginacion button,
+  body.solo-lectura .toolbar select, body.solo-lectura .toolbar input,
+  body.solo-lectura #buscarCriterio, body.solo-lectura #permanenciaFiltroAnio, body.solo-lectura #otraPruebaSelect{ pointer-events:auto; opacity:1; cursor:pointer; }
   body.solo-lectura::before{
     content:"👁️ Modo solo lectura — no se pueden guardar cambios";
     display:block; background:#1F3A6E; color:#fff; text-align:center;
@@ -738,7 +750,10 @@
       <div class="empty-state" id="emptyCatalogo" style="display:none;">No hay candidatos que coincidan con la búsqueda.</div>
 
       <div id="candidatoDetalle" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid #EDEEEF;">
-        <h2 id="detNombre" style="margin-bottom:2px;"></h2>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+          <h2 id="detNombre" style="margin-bottom:2px;"></h2>
+          <button class="btn ghost" id="btnEditarDatosCandidato" style="padding:6px 12px;">✏️ Editar datos</button>
+        </div>
         <div class="desc" id="detVacante"></div>
         <div class="form-field" style="max-width:260px;margin:10px 0 16px;">
           <label>Fuente del candidato</label>
@@ -799,7 +814,7 @@
                 <div style="margin-top:8px;">
                   <button class="btn secondary" id="btnExtraer16PF">Extraer datos del PDF</button>
                 </div>
-                <div class="desc" style="margin-top:8px;margin-bottom:0;">Sube el reporte de PeopleCloud. Los valores y la fecha de presentación se extraen automáticamente y quedan editables por si algo no se leyó bien.</div>
+                <div class="desc" style="margin-top:8px;margin-bottom:0;">Sube el reporte de PeopleCloud, o captura los valores a mano en la tabla de abajo. Los valores y la fecha de presentación se extraen automáticamente y quedan editables por si algo no se leyó bien.</div>
               </div>
               <div id="valores16PFWrap" style="display:none;">
                 <div class="chart-criterio-box">
@@ -998,7 +1013,7 @@
         <div class="grid two">
           <div class="card">
             <h2>% Rotación de personal por año</h2>
-            <div class="desc">Voluntaria vs. Forzada — calculado con colaboradores activos al inicio/fin de cada año (2025/2026)</div>
+            <div class="desc">Voluntaria vs. Forzada — bajas clasificadas del catálogo ÷ plantilla promedio capturada en la pestaña "Calculadora" (solo aparecen los años con plantilla capturada)</div>
             <div class="chart-fixed-box h-220"><canvas id="chartResumenRotacion"></canvas></div>
           </div>
           <div class="card">
@@ -1053,32 +1068,13 @@
 
     <!-- ========== SUBPESTAÑA: CALCULADORA ========== -->
     <div class="sub-panel3" id="sub3-calculadora" style="display:none;">
-      <div class="grid two">
-        <div class="card">
-          <h2>2025</h2>
-          <div class="desc">Datos del año completo</div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-            <div class="form-field"><label>Colaboradores al inicio</label><input type="number" id="rot2025Inicio" min="0"></div>
-            <div class="form-field"><label>Colaboradores al final</label><input type="number" id="rot2025Final" min="0"></div>
-            <div class="form-field"><label>Bajas voluntarias</label><input type="number" id="rot2025Voluntarias" min="0"></div>
-            <div class="form-field"><label>Bajas forzadas</label><input type="number" id="rot2025Forzadas" min="0"></div>
-          </div>
-        </div>
-        <div class="card">
-          <h2>2026</h2>
-          <div class="desc">Datos del año completo</div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-            <div class="form-field"><label>Colaboradores al inicio</label><input type="number" id="rot2026Inicio" min="0"></div>
-            <div class="form-field"><label>Colaboradores al final</label><input type="number" id="rot2026Final" min="0"></div>
-            <div class="form-field"><label>Bajas voluntarias</label><input type="number" id="rot2026Voluntarias" min="0"></div>
-            <div class="form-field"><label>Bajas forzadas</label><input type="number" id="rot2026Forzadas" min="0"></div>
-          </div>
-        </div>
-      </div>
+      <!-- un recuadro por año: los años con datos capturados, los años con bajas en el catálogo y el año actual -->
+      <div class="grid two" id="calcAniosWrap"></div>
 
       <div class="form-actions" style="justify-content:flex-start;margin-bottom:20px;">
         <button class="btn" id="btnCalcularRotacion">Calcular rotación</button>
         <button class="btn ghost" id="btnAutollenarDesdeBajas">Autollenar bajas desde el catálogo</button>
+        <button class="btn ghost" id="btnAgregarAnioCalc">+ Agregar año</button>
       </div>
 
       <div id="rotacionResultados" style="display:none;">
@@ -1088,7 +1084,7 @@
             <div class="desc">% de rotación = bajas ÷ promedio de colaboradores (inicio y final), por año</div>
             <table>
               <thead>
-                <tr><th>Tipo de salida</th><th>2025</th><th>2026</th></tr>
+                <tr id="theadResumenRotacion"><th>Tipo de salida</th></tr>
               </thead>
               <tbody id="tblResumenRotacion"></tbody>
             </table>
@@ -1166,6 +1162,11 @@
           </div>
           <div><label>Año de baja</label>
             <select id="bajaFiltroAnio"><option value="">Todos</option></select>
+          </div>
+          <div><label>Estatus</label>
+            <select id="bajaFiltroEstatus">
+              <option value="BAJA">Bajas</option><option value="ALTA">Activos (reingresos)</option>
+            </select>
           </div>
         </div>
         <div style="overflow-x:auto;">
@@ -1266,7 +1267,7 @@
       <h2>Cómo configurar tu Google Sheet (una sola vez)</h2>
       <ol class="conexion-pasos">
         <li>Entra a <strong>Google Drive</strong> y crea una hoja de cálculo nueva. Nómbrala, por ejemplo, <strong>"Metelmex RH - Base de datos"</strong>.</li>
-        <li>No es necesario crear pestañas manualmente: <strong>Catalogo_Empleados</strong>, <strong>Seguimiento_Bajas</strong>, <strong>Vacantes</strong>, <strong>Candidatos</strong> y <strong>_Control</strong> se crean solas la primera vez que guardas desde el dashboard.</li>
+        <li>No es necesario crear pestañas manualmente: <strong>Catalogo_Empleados</strong>, <strong>Seguimiento_Bajas</strong>, <strong>Vacantes</strong>, <strong>Candidatos</strong>, <strong>Criterios_Psicometria</strong>, <strong>Rotacion_Calculadora</strong> y <strong>_Control</strong> se crean solas la primera vez que guardas desde el dashboard.</li>
         <li>Dentro de la hoja, ve a <strong>Extensiones → Apps Script</strong>.</li>
         <li>Borra el contenido de ejemplo y pega el código del archivo <strong>Codigo.gs</strong> que te compartí.</li>
         <li>Revisa el valor de <code>TOKEN_ACCESO</code> al inicio del archivo — usa el que ya te generé, o define uno propio (por ejemplo con <code>Utilities.getUuid()</code> corrido una vez en el editor).</li>
@@ -1436,7 +1437,7 @@
         <label>Tipo de empleado</label>
         <select id="abModalTipoEmpleado">
           <option value="">Sin especificar</option>
-          <option>Operativo</option><option>Administrativo</option><option>Técnicos</option><option>Servicios</option>
+          <option value="OPERATIVO">Operativo</option><option value="ADMINISTRATIVO">Administrativo</option><option value="TÉCNICOS">Técnicos</option><option value="SERVICIOS">Servicios</option>
         </select>
       </div>
       <div class="form-field"><label>Fecha de alta</label><input type="date" id="abModalFechaAlta"></div>
@@ -1489,8 +1490,46 @@
 // Modo solo lectura: abrir el dashboard con ?soloLectura=1 al final de la URL
 // deshabilita todos los botones y la carga de archivos (ver CSS ".solo-lectura")
 // y oculta la pestaña de Conexión (para no exponer la URL/token del Apps Script).
-if(new URLSearchParams(location.search).get('soloLectura') === '1'){
+// En solo lectura NADA se guarda ni se sube (saveLocal y el envío a la nube no hacen nada) y los datos
+// se traen del Sheet cada vez que se abre. El enlace para compartir lleva la URL y el token de LECTURA
+// después de "#" (no viaja al servidor):  index.html?soloLectura=1#u=<URL del Apps Script>&t=<TOKEN_LECTURA>
+const SOLO_LECTURA = new URLSearchParams(location.search).get('soloLectura') === '1';
+const HASH_LECTURA = new URLSearchParams(location.hash.slice(1));
+if(SOLO_LECTURA){
   document.body.classList.add('solo-lectura');
+}
+
+/** Fecha de HOY en hora local (AAAA-MM-DD). toISOString() da la fecha de Londres (UTC): en México,
+ *  después de las 6 pm ya marcaba el día siguiente. */
+function hoyISO(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+/** Quita los caracteres con los que un texto capturado (o venido del Sheet/Excel compartido) podría
+ *  convertirse en código dentro de la página: < > " ' se cambian por sus equivalentes tipográficos.
+ *  Se aplica a todo el STATE al cargarlo y al guardarlo, así que todas las tablas lo heredan.
+ *  ponytail: saneo en la entrada en vez de escapar cada plantilla innerHTML; si algún día se necesita
+ *  conservar esos caracteres exactos, hay que escapar en cada plantilla. */
+const SANEO = {'<':'‹','>':'›','"':'”',"'":'’'};
+function sanear(x){
+  if(typeof x === 'string') return x.replace(/[<>"']/g, ch => SANEO[ch]);
+  if(Array.isArray(x)) return x.map(sanear);
+  if(x && typeof x === 'object'){
+    const out = {};
+    Object.keys(x).forEach(k => { out[sanear(k)] = sanear(x[k]); });
+    return out;
+  }
+  return x;
+}
+function sanearState(st){
+  ['vacantes','candidatos','criteriosPsicometria','catalogoEmpleados','seguimientoBajas'].forEach(k=>{
+    if(Array.isArray(st[k])){
+      // se reemplaza cada registro EN SU LUGAR del arreglo para no romper referencias ya abiertas en pantalla
+      st[k].forEach((r,i)=>{ const limpio = sanear(r); if(JSON.stringify(limpio) !== JSON.stringify(r)){ Object.keys(r).forEach(p=>delete r[p]); Object.assign(r, limpio); } });
+    }
+  });
+  return st;
 }
 
 /* =========================================================
@@ -1501,34 +1540,33 @@ const CONFIG = {
   TOKEN_KEY: "reclutamiento_token",
   LOCAL_KEY: "reclutamiento_local_data" // respaldo local mientras no hay backend conectado
 };
-CONFIG.APPS_SCRIPT_URL = localStorage.getItem(CONFIG.APPS_SCRIPT_URL_KEY) || "";
+CONFIG.APPS_SCRIPT_URL = (SOLO_LECTURA && HASH_LECTURA.get('u')) || localStorage.getItem(CONFIG.APPS_SCRIPT_URL_KEY) || "";
 
-function getToken(){ return localStorage.getItem(CONFIG.TOKEN_KEY) || ""; }
+function getToken(){ return (SOLO_LECTURA && HASH_LECTURA.get('t')) || localStorage.getItem(CONFIG.TOKEN_KEY) || ""; }
+
+/** Llamada JSONP genérica al Apps Script (lectura). Resuelve con la respuesta, o {ok:false,error} si falla. */
+function jsonp(url, params, timeoutMs, msgTimeout){
+  return new Promise((resolve)=>{
+    if(!url){ resolve({ok:false, error:'no-config'}); return; }
+    const cbName = 'cbJsonp_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
+    let resuelto = false;
+    const script = document.createElement('script');
+    window[cbName] = (resp)=>{ resuelto = true; cleanup(); resolve(resp || {ok:false, error:'Respuesta vacía.'}); };
+    function cleanup(){ delete window[cbName]; if(script.parentNode) script.parentNode.removeChild(script); }
+    script.onerror = ()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'No se pudo contactar esa URL.'}); } };
+    script.src = url + '?' + new URLSearchParams({...params, callback: cbName}).toString();
+    document.body.appendChild(script);
+    setTimeout(()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error: msgTimeout || 'Tiempo de espera agotado.'}); } }, timeoutMs);
+  });
+}
 
 /* =========================================================
    CONEXIÓN — prueba vía JSONP contra el Apps Script y actualiza
    el indicador tanto del menú lateral como de la vista "Conexión"
    ========================================================= */
-function probarConexionJSONP(url, token){
-  return new Promise((resolve)=>{
-    if(!url){ resolve({ok:false, error:'no-config'}); return; }
-    const cbName = 'cbConexion_' + Date.now();
-    let resuelto = false;
-    const script = document.createElement('script');
-    window[cbName] = (resp)=>{
-      resuelto = true;
-      cleanup();
-      resolve({ok: !!(resp && resp.ok), data: resp});
-    };
-    function cleanup(){
-      delete window[cbName];
-      if(script.parentNode) script.parentNode.removeChild(script);
-    }
-    script.onerror = ()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'No se pudo contactar esa URL.'}); } };
-    script.src = url + '?action=getData&token=' + encodeURIComponent(token) + '&callback=' + cbName;
-    document.body.appendChild(script);
-    setTimeout(()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'Tiempo de espera agotado (revisa la URL, o intenta de nuevo si Apps Script está "despertando").'}); } }, 20000);
-  });
+async function probarConexionJSONP(url, token){
+  const resp = await jsonp(url, {action:'getData', token}, 20000, 'Tiempo de espera agotado (revisa la URL, o intenta de nuevo si Apps Script está "despertando").');
+  return {ok: !!resp.ok, data: resp, error: resp.error};
 }
 
 function actualizarIndicadorConexion(estado, mensaje){
@@ -1564,7 +1602,10 @@ async function verificarConexionAlCargar(){
   }
   actualizarIndicadorConexion('probando', 'Probando conexión…');
   const resultado = await probarConexionJSONP(url, token);
-  if(resultado.ok){
+  if(resultado.ok && SOLO_LECTURA){
+    actualizarIndicadorConexion('conectado', 'Solo lectura — mostrando los datos actuales del Google Sheet.');
+    cargarTodoSoloLectura(url, token, resultado.data);
+  } else if(resultado.ok){
     actualizarIndicadorConexion('conectado', 'Conectado — los datos se están sincronizando con tu Google Sheet.');
     autoDescargarSiNavegadorNuevo(url, token);
   } else {
@@ -1606,7 +1647,8 @@ async function autoDescargarSiNavegadorNuevo(url, token){
       if(r.ok && ((r.catalogoEmpleados&&r.catalogoEmpleados.length) || (r.seguimientoBajas&&r.seguimientoBajas.length))){
         STATE.catalogoEmpleados = r.catalogoEmpleados || [];
         STATE.seguimientoBajas = r.seguimientoBajas || [];
-        STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+        aplicarCalculadoraDeNube_(r, url);
+        STATE.catalogoEmpleadosActualizado = hoyISO();
         registrarConteoBueno_('rotacion', url, STATE.catalogoEmpleados.length + STATE.seguimientoBajas.length);
         guardarSnapshot_('catalogoEmpleados', url, STATE.catalogoEmpleados, 'codigo');
         guardarSnapshot_('seguimientoBajas', url, STATE.seguimientoBajas, 'codigo');
@@ -1631,6 +1673,7 @@ async function autoDescargarSiNavegadorNuevo(url, token){
       if(r.ok && ((r.vacantes&&r.vacantes.length) || (r.candidatos&&r.candidatos.length))){
         STATE.vacantes = r.vacantes || [];
         STATE.candidatos = r.candidatos || [];
+        aplicarCriteriosDeNube_(r, url);
         registrarConteoBueno_('reclutamiento', url, STATE.vacantes.length + STATE.candidatos.length);
         guardarSnapshot_('vacantes', url, STATE.vacantes, 'id');
         guardarSnapshot_('candidatos', url, STATE.candidatos, 'id');
@@ -1647,6 +1690,55 @@ async function autoDescargarSiNavegadorNuevo(url, token){
     }
   } catch(e){ console.error('Error en auto-descarga de navegador nuevo:', e); }
   finally{ sincronizandoDesdeNube = false; }
+}
+
+/** Modo solo lectura: siempre muestra lo que hay en el Sheet (en memoria, sin guardar nada en el navegador). */
+async function cargarTodoSoloLectura(url, token, rotacion){
+  const rec = await leerReclutamientoDesdeSheetJSONP(url, token);
+  if(rec.ok){
+    STATE.vacantes = rec.vacantes || [];
+    STATE.candidatos = rec.candidatos || [];
+    STATE.criteriosPsicometria = (rec.criteriosPsicometria || []).map(migrarCriterioAntiguo);
+  }
+  if(rotacion && rotacion.ok){
+    STATE.catalogoEmpleados = rotacion.catalogoEmpleados || [];
+    STATE.seguimientoBajas = rotacion.seguimientoBajas || [];
+    STATE.rotacionData = calculadoraDesdeLista(rotacion.rotacionCalculadora);
+  }
+  sanearState(STATE);
+  try{
+    refreshCargaLists(); renderResumen();
+    actualizarResumenCatalogoEmpleados(); renderResumenRotacion();
+  } catch(e){ console.error('Error pintando datos de solo lectura:', e); }
+}
+
+/** La Calculadora de rotación se guarda en el Sheet como filas {anio, inicio, final, voluntarias, forzadas};
+ *  en el navegador vive como {2025:{...}, 2026:{...}}. Los números del Sheet pueden llegar como texto. */
+function calculadoraALista(obj){
+  return Object.keys(obj||{}).map(anio => ({anio, ...obj[anio]}));
+}
+function calculadoraDesdeLista(lista){
+  const out = {};
+  (lista||[]).forEach(r=>{
+    if(!r || !r.anio) return;
+    out[String(r.anio)] = {inicio:Number(r.inicio)||0, final:Number(r.final)||0, voluntarias:Number(r.voluntarias)||0, forzadas:Number(r.forzadas)||0};
+  });
+  return out;
+}
+
+/** Al bajar de la nube: criterios de psicometría y Calculadora se toman del Sheet solo si allá hay algo
+ *  (un Sheet que todavía no los tiene no debe borrar los que ya existen en este navegador). */
+function aplicarCriteriosDeNube_(resp, url){
+  if(resp.criteriosPsicometria && resp.criteriosPsicometria.length){
+    STATE.criteriosPsicometria = resp.criteriosPsicometria.map(migrarCriterioAntiguo);
+    guardarSnapshot_('criteriosPsicometria', url, STATE.criteriosPsicometria, 'id');
+  }
+}
+function aplicarCalculadoraDeNube_(resp, url){
+  if(resp.rotacionCalculadora && resp.rotacionCalculadora.length){
+    STATE.rotacionData = calculadoraDesdeLista(resp.rotacionCalculadora);
+    guardarSnapshot_('rotacionCalculadora', url, resp.rotacionCalculadora, 'anio');
+  }
 }
 
 function cargarValoresGuardadosEnFormularioConexion(){
@@ -1693,26 +1785,34 @@ document.getElementById('btnProbarConexion').addEventListener('click', async ()=
    ========================================================= */
 const DEMO = {
   vacantes: [
-    {id:"d1", puesto:"Operador de Producción", planta:"Planta 1", solicitante:"J. Ramírez", fechaApertura:"2025-07-28", status:"Abierta", fuente:"Bolsa de trabajo", numVacantes:2},
+    {id:"d1", puesto:"Operador de Producción", planta:"Planta 1", solicitante:"J. Ramírez", fechaApertura:"2025-07-28", status:"Abierta", fuente:"Solicitud de empleo", numVacantes:2},
     {id:"d2", puesto:"Supervisor de Calidad", planta:"Planta 3", solicitante:"M. Torres", fechaApertura:"2025-08-10", status:"En proceso", fuente:"Referido", numVacantes:1},
-    {id:"d3", puesto:"Auxiliar Contable", planta:"Corporativo", solicitante:"L. Fuentes", fechaApertura:"2025-08-18", status:"Abierta", fuente:"Universidad", numVacantes:1},
-    {id:"d4", puesto:"Montacarguista", planta:"Niveladora", solicitante:"R. Ibarra", fechaApertura:"2025-07-05", status:"Abierta", fuente:"Bolsa de trabajo", numVacantes:1},
+    {id:"d3", puesto:"Auxiliar Contable", planta:"Corporativo", solicitante:"L. Fuentes", fechaApertura:"2025-08-18", status:"Abierta", fuente:"Feria del empleo", numVacantes:1},
+    {id:"d4", puesto:"Montacarguista", planta:"Niveladora", solicitante:"R. Ibarra", fechaApertura:"2025-07-05", status:"Abierta", fuente:"Solicitud de empleo", numVacantes:1},
     {id:"d5", puesto:"Ingeniero de Procesos", planta:"Planta 2", solicitante:"D. Salinas", fechaApertura:"2025-08-01", status:"En proceso", fuente:"Agencia", numVacantes:1},
-    {id:"d6", puesto:"Técnico de Mantenimiento", planta:"Planta III", solicitante:"A. Correa", fechaApertura:"2025-08-15", status:"Abierta", fuente:"Redes sociales", numVacantes:1},
+    {id:"d6", puesto:"Técnico de Mantenimiento", planta:"Planta III", solicitante:"A. Correa", fechaApertura:"2025-08-15", status:"Abierta", fuente:"Publicación en redes", numVacantes:1},
     {id:"d7", puesto:"Analista de Nómina", planta:"Corporativo", solicitante:"H. Peña", fechaApertura:"2025-06-20", status:"Abierta", fuente:"Referido", numVacantes:1},
-    {id:"d8", puesto:"Operador de Producción", planta:"Planta 4", solicitante:"J. Ramírez", fechaApertura:"2025-08-20", status:"Abierta", fuente:"Bolsa de trabajo", numVacantes:1},
-    {id:"d9", puesto:"Auxiliar de Almacén", planta:"Planta 2", solicitante:"D. Salinas", fechaApertura:"2025-06-10", status:"Cerrada", fuente:"Bolsa de trabajo", numVacantes:2, fechaCierre:"2025-07-02", plazasCubiertas:[{candidatoId:"c2",fecha:"2025-06-28"},{candidatoId:"c3",fecha:"2025-07-02"}]},
+    {id:"d8", puesto:"Operador de Producción", planta:"Planta 4", solicitante:"J. Ramírez", fechaApertura:"2025-08-20", status:"Abierta", fuente:"Solicitud de empleo", numVacantes:1},
+    {id:"d9", puesto:"Auxiliar de Almacén", planta:"Planta 2", solicitante:"D. Salinas", fechaApertura:"2025-06-10", status:"Cerrada", fuente:"Solicitud de empleo", numVacantes:2, fechaCierre:"2025-07-02", plazasCubiertas:[{candidatoId:"c2",fecha:"2025-06-28"},{candidatoId:"c3",fecha:"2025-07-02"}]},
   ],
   candidatos: [
-    {id:"c1", nombre:"José Luis Martínez", vacanteId:"d1", fuente:"Bolsa de trabajo", fechaPostulacion:"2025-08-01", etapaActual:"Entrevista jefe directo",
+    {id:"c1", nombre:"José Luis Martínez", vacanteId:"d1", fuente:"Solicitud de empleo", fechaPostulacion:"2025-08-01", etapaActual:"Entrevista jefe directo",
       historial:[{fecha:"2025-08-01",etapa:"Prueba práctica"},{fecha:"2025-08-04",etapa:"Exámenes médicos"},{fecha:"2025-08-10",etapa:"Entrevista jefe directo"}]},
-    {id:"c2", nombre:"Ana Beatriz López", vacanteId:"d9", fuente:"Bolsa de trabajo", fechaPostulacion:"2025-06-12", etapaActual:"Contratación",
+    {id:"c2", nombre:"Ana Beatriz López", vacanteId:"d9", fuente:"Solicitud de empleo", fechaPostulacion:"2025-06-12", etapaActual:"Contratación",
       historial:[{fecha:"2025-06-12",etapa:"Prueba práctica"},{fecha:"2025-06-28",etapa:"Contratación",observaciones:"Asignado a cubrir plaza de: Auxiliar de Almacén"}]},
-    {id:"c3", nombre:"Marco Aurelio Díaz", vacanteId:"d9", fuente:"Bolsa de trabajo", fechaPostulacion:"2025-06-15", etapaActual:"Contratación",
+    {id:"c3", nombre:"Marco Aurelio Díaz", vacanteId:"d9", fuente:"Solicitud de empleo", fechaPostulacion:"2025-06-15", etapaActual:"Contratación",
       historial:[{fecha:"2025-06-15",etapa:"Prueba práctica"},{fecha:"2025-07-02",etapa:"Contratación",observaciones:"Asignado a cubrir plaza de: Auxiliar de Almacén"}]},
-  ],
-  contratadosMes: 8
+  ]
 };
+/** Los registros demo nunca deben llegar al Sheet ni mezclarse con datos reales. Se reconocen por id
+ *  (los reales son 'v'/'c' + 13 dígitos), así también se detectan copias demo guardadas antes. */
+const DEMO_IDS = new Set([...DEMO.vacantes, ...DEMO.candidatos].map(x=>x.id));
+const esDemo = (r) => r && DEMO_IDS.has(String(r.id));
+/** Al registrar la primera vacante real se retiran los datos demo de la pantalla. */
+function quitarDemo(){
+  STATE.vacantes = STATE.vacantes.filter(v=>!esDemo(v));
+  STATE.candidatos = STATE.candidatos.filter(c=>!esDemo(c));
+}
 
 function criterioDefaultOperadorGeneral(){
   return {
@@ -1754,19 +1854,23 @@ function migrarCriterioAntiguo(cr){
 }
 
 function loadLocal(){
+  // En solo lectura no se muestran datos demo ni copias locales: todo llega del Sheet al abrir.
+  if(SOLO_LECTURA) return { vacantes: [], candidatos: [], criteriosPsicometria: [] };
   try{
     const raw = localStorage.getItem(CONFIG.LOCAL_KEY);
     if(raw){
       const parsed = JSON.parse(raw);
       if(!parsed.criteriosPsicometria){ parsed.criteriosPsicometria = [criterioDefaultOperadorGeneral()]; }
       else { parsed.criteriosPsicometria = parsed.criteriosPsicometria.map(migrarCriterioAntiguo); }
-      return parsed;
+      return sanearState(parsed);
     }
   }catch(e){}
   return { vacantes: [...DEMO.vacantes], candidatos: [...DEMO.candidatos], criteriosPsicometria: [criterioDefaultOperadorGeneral()] };
 }
 function saveLocal(state){
-  localStorage.setItem(CONFIG.LOCAL_KEY, JSON.stringify(state));
+  sanearState(state);
+  if(SOLO_LECTURA) return; // solo lectura: nunca se guarda ni se sube nada
+  guardarEnNavegador_(CONFIG.LOCAL_KEY, JSON.stringify(state));
   programarAutoSincronizacionNube();
 }
 
@@ -1831,10 +1935,31 @@ function leerSnapshot_(arregloNombre, url){
   try{ return JSON.parse(localStorage.getItem(marcaSnapshot_(arregloNombre, url)) || '{}'); }
   catch(e){ return {}; }
 }
+/** Huella corta de un registro (sin su _ts). El snapshot guarda solo {h, _ts} por registro en vez de
+ *  una copia completa: antes duplicaba todo lo guardado y acercaba al navegador a su límite de ~5 MB. */
+function huellaRegistro_(r){
+  const s = JSON.stringify({...r, _ts: undefined});
+  let h = 0x811c9dc5;
+  for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return s.length + ':' + (h >>> 0).toString(36);
+}
 function guardarSnapshot_(arregloNombre, url, lista, idField){
   const snap = {};
-  (lista||[]).forEach(r=>{ if(r && r[idField]!=null) snap[String(r[idField])] = r; });
-  localStorage.setItem(marcaSnapshot_(arregloNombre, url), JSON.stringify(snap));
+  (lista||[]).forEach(r=>{ if(r && r[idField]!=null) snap[String(r[idField])] = {h: huellaRegistro_(r), _ts: r._ts}; });
+  guardarEnNavegador_(marcaSnapshot_(arregloNombre, url), JSON.stringify(snap));
+}
+/** localStorage.setItem con aviso si el navegador ya no tiene espacio (antes fallaba en silencio y no se guardaba nada). */
+let avisoEspacioMostrado = false;
+function guardarEnNavegador_(clave, valor){
+  try{ localStorage.setItem(clave, valor); return true; }
+  catch(e){
+    console.error('No se pudo guardar en el navegador:', e);
+    if(!avisoEspacioMostrado){
+      avisoEspacioMostrado = true;
+      alert('⚠️ El navegador se quedó sin espacio para guardar los datos del dashboard. Los últimos cambios NO quedaron guardados en esta computadora. Si tienes la conexión con Google Sheets configurada, usa "Guardar en la nube" para no perderlos.');
+    }
+    return false;
+  }
 }
 /** Compara la lista actual contra el snapshot: le pone _ts nuevo a lo que cambió o es nuevo,
  *  conserva el _ts de lo que no cambió, y devuelve también los ids que ya no están (eliminados). */
@@ -1846,13 +1971,57 @@ function prepararParaSubir_(arregloNombre, url, lista, idField){
     if(id === null) return r; // sin id: no se puede mergear con seguridad, se sube tal cual
     idsActuales.add(id);
     const anterior = snap[id];
-    const sinCambio = anterior && JSON.stringify({...anterior, _ts:undefined}) === JSON.stringify({...r, _ts:undefined});
+    // snapshots viejos traen el registro completo en vez de {h, _ts}
+    const huellaAnterior = anterior && (anterior.h || huellaRegistro_(anterior));
+    const sinCambio = anterior && huellaAnterior === huellaRegistro_(r);
     return { ...r, _ts: sinCambio ? (anterior._ts || Date.now()) : Date.now() };
   });
   const eliminados = Object.keys(snap)
     .filter(id => !idsActuales.has(id))
     .map(id => ({ id, _ts: Date.now() }));
   return { registros, eliminados };
+}
+
+/** Arma lo que se sube de cada módulo (usado por la auto-sincronización y por "Guardar en la nube").
+ *  Reclutamiento incluye los criterios de psicometría y Rotación la Calculadora: antes se quedaban
+ *  solo en el navegador donde se capturaron. */
+function prepararRotacion_(url){
+  const cat = prepararParaSubir_('catalogoEmpleados', url, STATE.catalogoEmpleados||[], 'codigo');
+  const seg = prepararParaSubir_('seguimientoBajas', url, STATE.seguimientoBajas||[], 'codigo');
+  const calc = prepararParaSubir_('rotacionCalculadora', url, calculadoraALista(STATE.rotacionData), 'anio');
+  return {
+    payload: {
+      catalogoEmpleados: cat.registros, catalogoEmpleadosEliminados: cat.eliminados,
+      seguimientoBajas: seg.registros, seguimientoBajasEliminados: seg.eliminados,
+      rotacionCalculadora: calc.registros, rotacionCalculadoraEliminados: calc.eliminados
+    },
+    guardarSnapshots(){
+      guardarSnapshot_('catalogoEmpleados', url, cat.registros, 'codigo');
+      guardarSnapshot_('seguimientoBajas', url, seg.registros, 'codigo');
+      guardarSnapshot_('rotacionCalculadora', url, calc.registros, 'anio');
+    }
+  };
+}
+function prepararReclutamiento_(url){
+  const vac = prepararParaSubir_('vacantes', url, (STATE.vacantes||[]).filter(v=>!esDemo(v)), 'id');
+  const cand = prepararParaSubir_('candidatos', url, (STATE.candidatos||[]).filter(c=>!esDemo(c)), 'id');
+  const crit = prepararParaSubir_('criteriosPsicometria', url, STATE.criteriosPsicometria||[], 'id');
+  // si alguna versión anterior ya subió los demo al Sheet, se piden borrar allá
+  const borrarDemo = (lista, ids) => { ids.forEach(id=>{ if(!lista.some(e=>e.id===id)) lista.push({id, _ts: Date.now()}); }); };
+  borrarDemo(vac.eliminados, DEMO.vacantes.map(v=>v.id));
+  borrarDemo(cand.eliminados, DEMO.candidatos.map(c=>c.id));
+  return {
+    payload: {
+      vacantes: vac.registros, vacantesEliminados: vac.eliminados,
+      candidatos: cand.registros, candidatosEliminados: cand.eliminados,
+      criteriosPsicometria: crit.registros, criteriosPsicometriaEliminados: crit.eliminados
+    },
+    guardarSnapshots(){
+      guardarSnapshot_('vacantes', url, vac.registros, 'id');
+      guardarSnapshot_('candidatos', url, cand.registros, 'id');
+      guardarSnapshot_('criteriosPsicometria', url, crit.registros, 'id');
+    }
+  };
 }
 
 async function autoSincronizarNube(){
@@ -1866,21 +2035,15 @@ async function autoSincronizarNube(){
       actualizarEstadoNubeRotacion('error', '⚠️ Se omitió la sincronización automática: los datos locales de Rotación están vacíos pero antes había datos. Usa "Cargar desde la nube" o revisa antes de "Guardar en la nube" manualmente.');
     } else {
       actualizarEstadoNubeRotacion('cargando', 'Sincronizando automáticamente…');
-      const prepCat = prepararParaSubir_('catalogoEmpleados', url, STATE.catalogoEmpleados||[], 'codigo');
-      const prepSeg = prepararParaSubir_('seguimientoBajas', url, STATE.seguimientoBajas||[], 'codigo');
-      const payloadRotacion = {
-        catalogoEmpleados: prepCat.registros, catalogoEmpleadosEliminados: prepCat.eliminados,
-        seguimientoBajas: prepSeg.registros, seguimientoBajasEliminados: prepSeg.eliminados
-      };
+      const prep = prepararRotacion_(url);
       try{
-        const rRot = await enviarPostPorIframe(url, { action:'guardarRotacionData', token, data: JSON.stringify(payloadRotacion) });
+        const rRot = await enviarPostPorIframe(url, { action:'guardarRotacionData', token, data: JSON.stringify(prep.payload) });
         if(rRot.ok){
           registrarConteoBueno_('rotacion', url, totalRot);
-          guardarSnapshot_('catalogoEmpleados', url, prepCat.registros, 'codigo');
-          guardarSnapshot_('seguimientoBajas', url, prepSeg.registros, 'codigo');
+          prep.guardarSnapshots();
           actualizarEstadoNubeRotacion('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
         } else {
-          actualizarEstadoNubeRotacion('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
+          actualizarEstadoNubeRotacion('error', 'No se pudo sincronizar automáticamente: ' + rRot.error);
         }
       } catch(e){ console.error('Error en auto-sincronización de Rotación:', e); }
     }
@@ -1892,21 +2055,15 @@ async function autoSincronizarNube(){
       actualizarEstadoNubeReclutamiento('error', '⚠️ Se omitió la sincronización automática: los datos locales de Reclutamiento están vacíos pero antes había datos. Usa "Cargar desde la nube" o revisa antes de "Guardar en la nube" manualmente.');
     } else {
       actualizarEstadoNubeReclutamiento('cargando', 'Sincronizando automáticamente…');
-      const prepVac = prepararParaSubir_('vacantes', url, STATE.vacantes||[], 'id');
-      const prepCand = prepararParaSubir_('candidatos', url, STATE.candidatos||[], 'id');
-      const payloadReclutamiento = {
-        vacantes: prepVac.registros, vacantesEliminados: prepVac.eliminados,
-        candidatos: prepCand.registros, candidatosEliminados: prepCand.eliminados
-      };
+      const prep = prepararReclutamiento_(url);
       try{
-        const rRec = await enviarPostPorIframe(url, { action:'guardarReclutamientoData', token, data: JSON.stringify(payloadReclutamiento) });
+        const rRec = await enviarPostPorIframe(url, { action:'guardarReclutamientoData', token, data: JSON.stringify(prep.payload) });
         if(rRec.ok){
           registrarConteoBueno_('reclutamiento', url, totalRec);
-          guardarSnapshot_('vacantes', url, prepVac.registros, 'id');
-          guardarSnapshot_('candidatos', url, prepCand.registros, 'id');
+          prep.guardarSnapshots();
           actualizarEstadoNubeReclutamiento('ok', '🔄 Sincronizado automáticamente el ' + new Date().toLocaleString('es-MX') + '.');
         } else {
-          actualizarEstadoNubeReclutamiento('error', 'No se pudo sincronizar automáticamente. Revisa la URL/token en "Conexión".');
+          actualizarEstadoNubeReclutamiento('error', 'No se pudo sincronizar automáticamente: ' + rRec.error);
         }
       } catch(e){ console.error('Error en auto-sincronización de Reclutamiento:', e); }
     }
@@ -1972,9 +2129,12 @@ function switchToView(viewName){
 }
 document.querySelectorAll('.subtabs button[data-sub]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    document.querySelectorAll('.subtabs button').forEach(b=>b.classList.remove('active'));
+    // solo dentro de la vista de este botón: antes ocultaba también los paneles de la otra vista
+    // (Vacantes quedaba en blanco al regresar desde Candidatos)
+    const vista = btn.closest('.view');
+    vista.querySelectorAll('.subtabs button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    document.querySelectorAll('.sub-panel').forEach(p=>p.style.display='none');
+    vista.querySelectorAll('.sub-panel').forEach(p=>p.style.display='none');
     document.getElementById('sub-' + btn.dataset.sub).style.display='block';
     document.getElementById('candidatoDetalle').style.display='none';
     document.getElementById('vacanteCandidatosPanel').style.display='none';
@@ -2002,8 +2162,13 @@ function buildFunnelData(vacantesFiltradas){
   const candsRelevantes = STATE.candidatos.filter(c => idsFiltrados.has(c.vacanteId));
   return ORDEN_ETAPAS.map(etapa => ({
     etapa,
-    total: candsRelevantes.filter(c => ORDEN_ETAPAS.indexOf(c.etapaActual) >= ORDEN_ETAPAS.indexOf(etapa)).length
+    total: candsRelevantes.filter(c => etapaMaxAlcanzadaIdx(c) >= ORDEN_ETAPAS.indexOf(etapa)).length
   }));
+}
+/** Etapa más avanzada a la que llegó el candidato según su historial. Así un "Descartado" sigue
+ *  contando en el embudo hasta donde llegó (antes desaparecía por completo, incluso de la primera etapa). */
+function etapaMaxAlcanzadaIdx(c){
+  return Math.max(ORDEN_ETAPAS.indexOf(c.etapaActual), ...(c.historial||[]).map(h=>ORDEN_ETAPAS.indexOf(h.etapa)));
 }
 function buildTTFPorPlanta(vacantesFiltradas){
   const porPlanta = {};
@@ -2016,13 +2181,7 @@ function buildTTFPorPlanta(vacantesFiltradas){
       }
     }
   });
-  // si no hay cerradas todavía, usamos dias transcurridos de las abiertas como proxy visual
-  if(Object.keys(porPlanta).length === 0){
-    vacantesFiltradas.forEach(v=>{
-      if(!porPlanta[v.planta]) porPlanta[v.planta] = [];
-      porPlanta[v.planta].push(diasDesde(v.fechaApertura));
-    });
-  }
+  // (antes, sin vacantes cerradas, mostraba los días abiertos de todas —incluidas canceladas— como si fueran tiempo de cobertura)
   const resultado = {};
   Object.keys(porPlanta).forEach(p=>{
     const arr = porPlanta[p];
@@ -2114,19 +2273,23 @@ function renderResumen(){
   const vacantesFiltradas = applyFilters();
   const abiertas = vacantesFiltradas.filter(v => v.status==="Abierta" || v.status==="En proceso");
   const cerradas = vacantesFiltradas.filter(v => v.status==="Cerrada");
-  const totalCandidatos = new Set(vacantesFiltradas.map(v=>v.id)).size
-    ? STATE.candidatos.filter(c => vacantesFiltradas.some(v=>v.id===c.vacanteId)).length : 0;
+  const idsFiltrados = new Set(vacantesFiltradas.map(v=>v.id));
+  const candsFiltrados = STATE.candidatos.filter(c => idsFiltrados.has(c.vacanteId));
+  // "en proceso" = ni descartados ni ya contratados (antes los contaba a todos)
+  const totalCandidatos = candsFiltrados.filter(c => c.etapaActual !== 'Descartado' && c.etapaActual !== 'Contratación').length;
   const criticas = abiertas.filter(v => diasDesde(v.fechaApertura) > 30);
 
   document.getElementById('kpiAbiertas').textContent = abiertas.length;
   document.getElementById('kpiCandidatos').textContent = totalCandidatos;
 
   const ttfPorPlanta = buildTTFPorPlanta(vacantesFiltradas);
-  const vals = Object.values(ttfPorPlanta);
-  const avgTTF = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : 0;
-  document.getElementById('kpiTTF').textContent = avgTTF + ' d';
+  // promedio de TODAS las plazas cubiertas de las vacantes cerradas (antes: promedio de los promedios por planta)
+  const diasPlazas = cerradas.flatMap(v => plazasCubiertas(v).map(p => Math.floor((new Date(p.fecha) - new Date(v.fechaApertura)) / 86400000)));
+  document.getElementById('kpiTTF').textContent = diasPlazas.length ? Math.round(diasPlazas.reduce((a,b)=>a+b,0)/diasPlazas.length) + ' d' : '–';
+  // contratados en el MES ACTUAL, según la fecha del movimiento "Contratación" (antes: todos los de la historia)
+  const mesActual = hoyISO().slice(0,7);
   document.getElementById('kpiContratados').textContent =
-    STATE.candidatos.filter(c=>c.etapaActual==="Contratación").length;
+    candsFiltrados.filter(c => (c.historial||[]).some(h => h.etapa === 'Contratación' && String(h.fecha||'').startsWith(mesActual))).length;
   document.getElementById('kpiCriticas').textContent = criticas.length;
 
   // tabla
@@ -2160,7 +2323,7 @@ function renderResumen(){
   document.getElementById('alertList').innerHTML = top.length ? top.map(v=>{
     const d = diasDesde(v.fechaApertura);
     const sem = semaforoInfo(d);
-    return `<div class="alert-item ${sem.clase==='crit'?'':'warn'}">
+    return `<div class="alert-item ${sem.clase==='crit'?'':sem.clase}">
       <div><div style="font-weight:600;">${v.puesto}</div><div style="color:var(--text-dim);font-size:11.5px;">${v.planta}</div></div>
       <div class="days">${d} días</div>
     </div>`;
@@ -2243,8 +2406,26 @@ document.getElementById('fPlanta').addEventListener('change', renderResumen);
 document.getElementById('fStatus').addEventListener('change', renderResumen);
 document.getElementById('fFuente').addEventListener('change', renderResumen);
 document.getElementById('btnRefresh').addEventListener('click', ()=>{ STATE = loadLocal(); renderResumen(); refreshCargaLists(); });
+/** Exporta a Excel las vacantes y candidatos que cumplen los filtros actuales del Resumen. */
 document.getElementById('btnExport').addEventListener('click', ()=>{
-  alert('Exportación a Excel: agregar SheetJS cuando el backend esté conectado (mismo patrón que dashboard de KPI Semanal).');
+  const vacs = applyFilters();
+  const ids = new Set(vacs.map(v=>v.id));
+  const hojaVac = vacs.map(v=>({
+    Puesto: v.puesto, Planta: v.planta, Solicitante: v.solicitante, Fuente: v.fuente, Status: v.status,
+    Apertura: v.fechaApertura, Cierre: v.fechaCierre || '', 'Días abierta': v.status==='Cerrada' || v.status==='Cancelada' ? '' : diasDesde(v.fechaApertura),
+    Plazas: totalPlazas(v), 'Plazas cubiertas': plazasCubiertas(v).length,
+    'Días prom. de cobertura': tiempoPromedioCobertura(v) ?? '', 'Motivo de cancelación': v.motivoCancelacion || '', Notas: v.notas || ''
+  }));
+  const hojaCand = STATE.candidatos.filter(c=>ids.has(c.vacanteId)).map(c=>{
+    const v = vacs.find(v=>v.id===c.vacanteId);
+    return { Candidato: c.nombre, Vacante: v.puesto, Planta: v.planta, Fuente: c.fuente, Postulación: c.fechaPostulacion,
+      'Etapa actual': c.etapaActual, 'Días en proceso': diasEnProceso(c),
+      'Veredicto psicometría': c.veredictoPsicometria ? c.veredictoPsicometria.veredicto : '' };
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hojaVac.length ? hojaVac : [{Puesto:''}]), 'Vacantes');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hojaCand.length ? hojaCand : [{Candidato:''}]), 'Candidatos');
+  XLSX.writeFile(wb, 'Reclutamiento_' + hoyISO() + '.xlsx');
 });
 
 /* =========================================================
@@ -2261,13 +2442,43 @@ document.getElementById('btnGuardarVac').addEventListener('click', ()=>{
     alert('Completa los campos obligatorios: Puesto, Planta, Solicitante y Fecha de apertura.');
     return;
   }
+  const numVacantes = parseInt(document.getElementById('vNumVacantes').value) || 1;
+
+  if(vacanteEnEdicionId){
+    const v = STATE.vacantes.find(x=>x.id===vacanteEnEdicionId);
+    if(!v){ limpiarFormVacante(); return; }
+    if(numVacantes < plazasCubiertas(v).length){
+      alert(`Esta vacante ya tiene ${plazasCubiertas(v).length} plaza(s) cubierta(s); no puede quedar con menos.`);
+      return;
+    }
+    const fechaMin = plazasCubiertas(v).map(p=>p.fecha).sort()[0];
+    if(fechaMin && fecha > fechaMin){
+      alert('La fecha de apertura no puede ser posterior a una plaza ya cubierta (' + fechaMin + ').');
+      return;
+    }
+    if(numVacantes !== totalPlazas(v)){
+      v.historialPlazas = v.historialPlazas || [];
+      v.historialPlazas.push({fecha: hoyISO(), de: totalPlazas(v), a: numVacantes});
+    }
+    Object.assign(v, { puesto, planta, solicitante, fechaApertura: fecha,
+      fuente: document.getElementById('vFuente').value, numVacantes,
+      notas: document.getElementById('vNotas').value.trim() });
+    saveLocal(STATE);
+    limpiarFormVacante();
+    refreshCargaLists();
+    renderResumen();
+    alert('Cambios guardados.');
+    return;
+  }
+
+  quitarDemo();
   const nueva = {
     id: uid(),
     puesto, planta, solicitante,
     fechaApertura: fecha,
     status: document.getElementById('vStatus').value,
     fuente: document.getElementById('vFuente').value,
-    numVacantes: parseInt(document.getElementById('vNumVacantes').value) || 1,
+    numVacantes,
     notas: document.getElementById('vNotas').value.trim(),
     origenLocal: true
   };
@@ -2280,7 +2491,55 @@ document.getElementById('btnGuardarVac').addEventListener('click', ()=>{
   alert('Vacante registrada. El conteo de días abiertos comienza a partir de hoy: ' + fecha);
 });
 document.getElementById('btnLimpiarVac').addEventListener('click', limpiarFormVacante);
+
+/** Agrega plazas a una vacante abierta/en proceso (ej. el área pide 2 personas más del mismo puesto).
+ *  Queda registrado en historialPlazas para la trazabilidad. Para bajar el número usa "Editar". */
+function agregarPlazasVacante(id){
+  const v = STATE.vacantes.find(x=>x.id===id);
+  if(!v) return;
+  const resp = prompt(`"${v.puesto}" tiene ${totalPlazas(v)} plaza(s) (${plazasCubiertas(v).length} cubierta(s)).\n¿Cuántas plazas MÁS quieres agregar?`, '1');
+  if(resp === null) return;
+  const n = parseInt(resp, 10);
+  if(!(n >= 1 && n <= 100) || String(n) !== resp.trim()){ alert('Escribe un número entero entre 1 y 100.'); return; }
+  const antes = totalPlazas(v);
+  v.numVacantes = antes + n;
+  v.historialPlazas = v.historialPlazas || [];
+  v.historialPlazas.push({fecha: hoyISO(), de: antes, a: v.numVacantes});
+  saveLocal(STATE);
+  refreshCargaLists();
+  renderResumen();
+  alert(`Listo: "${v.puesto}" ahora tiene ${v.numVacantes} plazas.`);
+}
+
+/** Editar una vacante ya registrada (antes no se podía: un error en el puesto impedía para siempre
+ *  que coincidiera con su criterio de psicometría). Reusa el formulario de "+ Nueva vacante". */
+let vacanteEnEdicionId = null;
+function editarVacante(id){
+  const v = STATE.vacantes.find(x=>x.id===id);
+  if(!v) return;
+  vacanteEnEdicionId = id;
+  document.getElementById('vPuesto').value = v.puesto || '';
+  document.getElementById('vPlanta').value = v.planta || '';
+  document.getElementById('vSolicitante').value = v.solicitante || '';
+  document.getElementById('vFecha').value = v.fechaApertura || '';
+  document.getElementById('vFuente').value = v.fuente || 'Referido';
+  document.getElementById('vNumVacantes').value = totalPlazas(v);
+  document.getElementById('vNotas').value = v.notas || '';
+  document.getElementById('vStatus').closest('.form-field').style.display = 'none'; // el status se cambia desde el listado
+  document.querySelector('#sub-nuevaVacante h2').textContent = 'Editar vacante: ' + v.puesto;
+  document.getElementById('btnGuardarVac').textContent = 'Guardar cambios';
+  document.querySelector('#view-carga .subtabs button[data-sub="nuevaVacante"]').click();
+}
+
+// si el usuario abre "+ Nueva vacante" a mano mientras editaba otra, el formulario vuelve a modo "nueva"
+document.querySelector('#view-carga .subtabs button[data-sub="nuevaVacante"]').addEventListener('click', e=>{
+  if(e.isTrusted && vacanteEnEdicionId) limpiarFormVacante();
+});
 function limpiarFormVacante(){
+  vacanteEnEdicionId = null;
+  document.getElementById('vStatus').closest('.form-field').style.display = '';
+  document.querySelector('#sub-nuevaVacante h2').textContent = 'Registrar nueva vacante';
+  document.getElementById('btnGuardarVac').textContent = 'Guardar vacante';
   document.getElementById('vPuesto').value='';
   document.getElementById('vPlanta').value='';
   document.getElementById('vSolicitante').value='';
@@ -2294,7 +2553,9 @@ function limpiarFormVacante(){
 function populateVacanteSelect(){
   const sel = document.getElementById('cVacante');
   const actual = sel.value;
-  const disponibles = STATE.vacantes.filter(v => v.status === "Abierta" || v.status === "En proceso");
+  // al editar un candidato también se lista su vacante actual, aunque ya esté cerrada o cancelada
+  const cEdit = candidatoEnEdicionId ? STATE.candidatos.find(c=>c.id===candidatoEnEdicionId) : null;
+  const disponibles = STATE.vacantes.filter(v => v.status === "Abierta" || v.status === "En proceso" || (cEdit && v.id === cEdit.vacanteId));
   sel.innerHTML = '<option value="">Selecciona una vacante…</option>' +
     disponibles.map(v=>`<option value="${v.id}">${v.puesto} — ${v.planta}</option>`).join('');
   if(actual && disponibles.some(v=>v.id===actual)) sel.value = actual;
@@ -2311,6 +2572,7 @@ document.getElementById('btnGuardarCand').addEventListener('click', ()=>{
     alert('Completa los campos obligatorios: Nombre, Vacante asociada y Fecha de postulación.');
     return;
   }
+  if(candidatoEnEdicionId){ guardarEdicionCandidato(nombre, vacanteId, fecha); return; }
   const etapa = document.getElementById('cEtapa').value;
   const nuevo = {
     id: 'c' + Date.now() + Math.floor(Math.random()*1000),
@@ -2331,7 +2593,92 @@ document.getElementById('btnGuardarCand').addEventListener('click', ()=>{
   alert('Candidato registrado y vinculado a la vacante seleccionada. También quedó disponible en el Catálogo de Candidatos.');
 });
 document.getElementById('btnLimpiarCand').addEventListener('click', limpiarFormCandidato);
+
+/* =========================================================
+   EDITAR DATOS DE UN CANDIDATO (nombre, teléfono, vacante, fuente,
+   fecha de postulación, observaciones). La etapa NO se edita aquí:
+   se mueve con "Registrar movimiento" para que quede en el historial.
+   Reusa el formulario de "+ Nuevo candidato".
+   ========================================================= */
+let candidatoEnEdicionId = null;
+function editarCandidato(id){
+  const c = STATE.candidatos.find(x=>x.id===id);
+  if(!c) return;
+  candidatoEnEdicionId = id;
+  populateVacanteSelect(); // incluye la vacante actual del candidato aunque ya esté cerrada
+  document.getElementById('cNombre').value = c.nombre || '';
+  document.getElementById('cVacante').value = c.vacanteId || '';
+  const selFuente = document.getElementById('cFuente');
+  selFuente.querySelectorAll('option[data-temporal]').forEach(o=>o.remove());
+  if(c.fuente && !Array.from(selFuente.options).some(o=>o.value===c.fuente)){
+    selFuente.insertAdjacentHTML('afterbegin', `<option data-temporal="1">${c.fuente}</option>`);
+  }
+  selFuente.value = c.fuente || 'Referido';
+  document.getElementById('cFecha').value = c.fechaPostulacion || '';
+  document.getElementById('cTelefono').value = c.telefono || '';
+  document.getElementById('cNotas').value = c.notas || '';
+  document.getElementById('cEtapa').closest('.form-field').style.display = 'none';
+  document.querySelector('#sub-nuevoCandidato h2').textContent = 'Editar candidato: ' + c.nombre;
+  document.getElementById('btnGuardarCand').textContent = 'Guardar cambios';
+  switchToView('catalogo');
+  document.querySelector('#view-catalogo .subtabs button[data-sub="nuevoCandidato"]').click();
+}
+
+function guardarEdicionCandidato(nombre, vacanteId, fecha){
+  const c = STATE.candidatos.find(x=>x.id===candidatoEnEdicionId);
+  if(!c){ limpiarFormCandidato(); return; }
+  const cambiaVacante = vacanteId !== c.vacanteId;
+  if(cambiaVacante){
+    const vActual = STATE.vacantes.find(v=>v.id===c.vacanteId);
+    if(vActual && plazasCubiertas(vActual).some(p=>p.candidatoId===c.id)){
+      alert(`Este candidato ocupa una plaza de "${vActual.puesto}". Para cambiarlo de vacante, primero quita esa plaza en "Cubrir plaza" / "Editar plazas".`);
+      return;
+    }
+  }
+  // la fecha de postulación no puede quedar después de movimientos ya registrados
+  const primeroOriginal = (c.historial||[]).find(h=>h.fecha === c.fechaPostulacion);
+  const otrasFechas = (c.historial||[]).filter(h=>h !== primeroOriginal).map(h=>h.fecha).sort();
+  if(otrasFechas.length && fecha > otrasFechas[0]){
+    alert('La fecha de postulación no puede ser posterior al primer movimiento registrado (' + otrasFechas[0] + '). Corrige primero ese movimiento en el historial.');
+    return;
+  }
+  if(cambiaVacante && c.veredictoPsicometria &&
+     !confirm('Al cambiar de vacante puede aplicar otro criterio de psicometría: el veredicto actual se borrará (los valores capturados se conservan) y habrá que volver a "Calcular veredicto". ¿Continuar?')) return;
+
+  // si el registro inicial del historial tenía la misma fecha de postulación, se corrige junto con ella
+  if(primeroOriginal) primeroOriginal.fecha = fecha;
+  Object.assign(c, {
+    nombre, vacanteId, fechaPostulacion: fecha,
+    fuente: document.getElementById('cFuente').value,
+    telefono: document.getElementById('cTelefono').value.trim(),
+    notas: document.getElementById('cNotas').value.trim()
+  });
+  if(cambiaVacante) delete c.veredictoPsicometria;
+  c.etapaActual = etapaVigente(c);
+
+  saveLocal(STATE);
+  limpiarFormCandidato();
+  refreshCargaLists();
+  renderResumen();
+  irAListadoCandidatosYVerDetalle(c.id);
+  alert('Datos del candidato actualizados.');
+}
+
+document.getElementById('btnEditarDatosCandidato').addEventListener('click', ()=>{
+  if(candidatoSeleccionadoId) editarCandidato(candidatoSeleccionadoId);
+});
+
+// si el usuario abre "+ Nuevo candidato" a mano mientras editaba otro, el formulario vuelve a modo "nuevo"
+document.querySelector('#view-catalogo .subtabs button[data-sub="nuevoCandidato"]').addEventListener('click', e=>{
+  if(e.isTrusted && candidatoEnEdicionId) limpiarFormCandidato();
+});
+
 function limpiarFormCandidato(){
+  candidatoEnEdicionId = null;
+  document.getElementById('cEtapa').closest('.form-field').style.display = '';
+  document.querySelector('#sub-nuevoCandidato h2').textContent = 'Registrar candidato';
+  document.getElementById('btnGuardarCand').textContent = 'Guardar candidato';
+  document.getElementById('cFuente').querySelectorAll('option[data-temporal]').forEach(o=>o.remove());
   document.getElementById('cNombre').value='';
   document.getElementById('cVacante').value='';
   document.getElementById('cFuente').value='Referido';
@@ -2379,6 +2726,8 @@ function renderDetalleVacanteHTML(v){
         const c = STATE.candidatos.find(c=>c.id===p.candidatoId);
         return `• ${c ? c.nombre : '—'} — cubierta el ${p.fecha}`;
       }).join('<br>') : 'Aún no hay plazas cubiertas para esta vacante.'}
+      ${(v.historialPlazas||[]).length ? '<br><br><strong>Cambios en el número de plazas:</strong><br>' +
+        v.historialPlazas.map(h=>`• ${h.fecha}: de ${h.de} a ${h.a} plazas`).join('<br>') : ''}
     </div>
   `;
 }
@@ -2414,6 +2763,8 @@ function refreshCargaLists(){
         <td>${nCand}</td>
         <td class="row-actions">
           <button onclick="abrirModalCierre('${v.id}')">Cubrir plaza</button>
+          <button onclick="agregarPlazasVacante('${v.id}')">+ Plazas</button>
+          <button onclick="editarVacante('${v.id}')">Editar</button>
           <button onclick="verCandidatosDeVacante('${v.id}')">Ver candidatos</button>
           <button onclick="eliminarVacante('${v.id}')">Eliminar</button>
         </td>
@@ -2522,7 +2873,7 @@ function abrirModalCancelarVacante(vacanteId){
   vacanteEnCancelacionId = vacanteId;
   document.getElementById('modalCancelarPuesto').textContent = 'Cancelar vacante: ' + v.puesto;
   document.getElementById('modalMotivoCancelacion').value = '';
-  document.getElementById('modalFechaCancelacion').value = new Date().toISOString().slice(0,10);
+  document.getElementById('modalFechaCancelacion').value = hoyISO();
   document.getElementById('modalCancelarVacante').classList.add('active');
 }
 
@@ -2560,7 +2911,7 @@ function abrirModalCierre(vacanteId){
   const v = STATE.vacantes.find(v=>v.id===vacanteId);
   const yaCubiertas = plazasCubiertas(v);
   const idsYaAsignados = new Set(yaCubiertas.map(p=>p.candidatoId));
-  const cands = candidatosDeVacante(vacanteId).filter(c => !idsYaAsignados.has(c.id));
+  const cands = candidatosDeVacante(vacanteId).filter(c => !idsYaAsignados.has(c.id) && c.etapaActual !== 'Descartado');
   const total = totalPlazas(v);
   const completo = yaCubiertas.length >= total;
 
@@ -2568,7 +2919,7 @@ function abrirModalCierre(vacanteId){
   document.getElementById('modalProgreso').textContent = completo
     ? `Esta vacante ya tiene sus ${total} plaza${total>1?'s':''} cubiertas. Puedes quitar alguna si fue un error, o cerrarla si sigue como "En proceso".`
     : `Esta vacante tiene ${total} plaza${total>1?'s':''} en total. Selecciona al candidato que cubre la siguiente.`;
-  document.getElementById('modalFechaCierre').value = new Date().toISOString().slice(0,10);
+  document.getElementById('modalFechaCierre').value = hoyISO();
 
   const pct = Math.round((yaCubiertas.length/total)*100);
   document.getElementById('modalPlazasCubiertasResumen').innerHTML = `
@@ -2620,8 +2971,19 @@ function abrirModalCierre(vacanteId){
 function quitarPlazaCubierta(vacanteId, idx){
   const v = STATE.vacantes.find(v=>v.id===vacanteId);
   if(!v || !v.plazasCubiertas) return;
-  if(!confirm('¿Quitar esta plaza cubierta? El candidato seguirá registrado, pero dejará de contar como plaza asignada.')) return;
-  v.plazasCubiertas.splice(idx,1);
+  if(!confirm('¿Quitar esta plaza cubierta? El candidato seguirá registrado, pero dejará de contar como plaza asignada y se quitará su movimiento de "Contratación".')) return;
+  const [quitada] = v.plazasCubiertas.splice(idx,1);
+  // revierte también el movimiento de "Contratación" que se creó al cubrir la plaza
+  // (antes el candidato seguía contando como contratado)
+  const c = quitada && STATE.candidatos.find(c=>c.id===quitada.candidatoId);
+  if(c && c.historial){
+    const i = c.historial.map((h,k)=>k).reverse().find(k=>{
+      const h = c.historial[k];
+      return h.etapa === 'Contratación' && (h.plazaDe === v.id ||
+        (!h.plazaDe && h.fecha === quitada.fecha && String(h.observaciones||'').startsWith('Asignado a cubrir plaza de:')));
+    });
+    if(i !== undefined){ c.historial.splice(i,1); c.etapaActual = etapaVigente(c); }
+  }
   if(v.status === "Cerrada"){
     v.status = v.plazasCubiertas.length > 0 ? "En proceso" : "Abierta";
     delete v.fechaCierre;
@@ -2676,6 +3038,10 @@ document.getElementById('btnConfirmarCierre').addEventListener('click', ()=>{
     return;
   }
   const v = STATE.vacantes.find(v=>v.id===vacanteEnCierreId);
+  if(fecha < v.fechaApertura){
+    alert('La plaza no puede cubrirse antes de la apertura de la vacante (' + v.fechaApertura + ').');
+    return;
+  }
   v.plazasCubiertas = v.plazasCubiertas || [];
   v.plazasCubiertas.push({candidatoId: candidatoSeleccionadoParaCierre, fecha});
 
@@ -2683,7 +3049,7 @@ document.getElementById('btnConfirmarCierre').addEventListener('click', ()=>{
   const c = STATE.candidatos.find(c=>c.id===candidatoSeleccionadoParaCierre);
   if(c){
     c.historial = c.historial || [];
-    c.historial.push({fecha, etapa: "Contratación", observaciones: "Asignado a cubrir plaza de: " + v.puesto});
+    c.historial.push({fecha, etapa: "Contratación", observaciones: "Asignado a cubrir plaza de: " + v.puesto, plazaDe: v.id});
     c.etapaActual = etapaVigente(c);
   }
 
@@ -2728,8 +3094,17 @@ function eliminarVacante(id){
   renderResumen();
 }
 function eliminarCandidato(id){
-  if(!confirm('¿Eliminar este candidato?')) return;
+  const v = STATE.vacantes.find(v=>plazasCubiertas(v).some(p=>p.candidatoId===id));
+  if(!confirm(v ? `¿Eliminar este candidato? Ocupa una plaza de "${v.puesto}": la plaza quedará libre otra vez.` : '¿Eliminar este candidato?')) return;
   STATE.candidatos = STATE.candidatos.filter(c=>c.id!==id);
+  if(v){
+    // no dejar una plaza "cubierta" por alguien que ya no existe
+    v.plazasCubiertas = v.plazasCubiertas.filter(p=>p.candidatoId!==id);
+    if(v.status === 'Cerrada' && v.plazasCubiertas.length < totalPlazas(v)){
+      v.status = v.plazasCubiertas.length ? 'En proceso' : 'Abierta';
+      delete v.fechaCierre;
+    }
+  }
   saveLocal(STATE);
   refreshCargaLists();
   renderResumen();
@@ -2740,19 +3115,23 @@ function eliminarCandidato(id){
 let candidatoSeleccionadoId = null;
 let movimientoEnEdicionIdx = null;
 
+/** Último movimiento del historial: el de fecha más reciente y, si hay varios el mismo día,
+ *  el que se capturó al final (antes ganaba el primero del día y la etapa no avanzaba). */
+function ultimoMovimiento(hist){
+  if(!hist || hist.length === 0) return null;
+  return hist.reduce((ult, h) => (h.fecha >= ult.fecha ? h : ult));
+}
 function etapaVigente(c){
   // la etapa "actual" del candidato es la del movimiento con fecha más reciente
-  if(!c.historial || c.historial.length===0) return c.etapaActual;
-  const ordenado = [...c.historial].sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
-  return ordenado[0].etapa;
+  const ult = ultimoMovimiento(c.historial);
+  return ult ? ult.etapa : c.etapaActual;
 }
 
 /** "Días en proceso" para mostrar en catálogo/tablas: normalmente cuenta desde la fecha de postulación
  *  hasta hoy, pero si el candidato ya llegó a "Contratación", deja de contar en la fecha que se le
  *  puso a ese movimiento (no sigue sumando días después de que la persona ya fue contratada). */
 function diasEnProceso(c){
-  const ordenado = (c.historial && c.historial.length) ? [...c.historial].sort((a,b)=> new Date(b.fecha) - new Date(a.fecha)) : [];
-  const ultimo = ordenado[0];
+  const ultimo = ultimoMovimiento(c.historial);
   if(ultimo && ultimo.etapa === 'Contratación'){
     const f1 = new Date(c.fechaPostulacion + "T00:00:00");
     const f2 = new Date(ultimo.fecha + "T00:00:00");
@@ -2779,7 +3158,7 @@ function verDetalleCandidato(id){
   }
   selFuente.value = c.fuente || 'Referido';
   document.getElementById('detNuevaEtapa').value = c.etapaActual;
-  document.getElementById('detFechaMovimiento').value = new Date().toISOString().slice(0,10);
+  document.getElementById('detFechaMovimiento').value = hoyISO();
   document.getElementById('detObsMovimiento').value = '';
   renderTimeline(c);
   cargarSeccionPsicometriaCandidato(c);
@@ -2913,9 +3292,9 @@ function verCandidatosDeVacante(vacanteId){
 }
 function irAListadoCandidatosYVerDetalle(candId){
   switchToView('catalogo');
-  document.querySelectorAll('.subtabs button').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#view-catalogo .subtabs button').forEach(b=>b.classList.remove('active'));
   document.querySelector('.subtabs button[data-sub="verCatalogo"]').classList.add('active');
-  document.querySelectorAll('.sub-panel').forEach(p=>p.style.display='none');
+  document.querySelectorAll('#view-catalogo .sub-panel').forEach(p=>p.style.display='none');
   document.getElementById('sub-verCatalogo').style.display='block';
   renderCatalogo();
   verDetalleCandidato(candId);
@@ -2960,7 +3339,7 @@ function renderCatalogo(){
       <td>${c.fechaPostulacion}</td>
       <td>${c.etapaActual}</td>
       <td>${diasProceso}</td>
-      <td class="row-actions"><button onclick="event.stopPropagation();irAListadoCandidatosYVerDetalle('${c.id}')">Ver historial</button><button onclick="event.stopPropagation();eliminarCandidato('${c.id}')" style="color:var(--crit);border-color:var(--crit);">Eliminar</button></td>
+      <td class="row-actions"><button onclick="event.stopPropagation();irAListadoCandidatosYVerDetalle('${c.id}')">Ver historial</button><button onclick="event.stopPropagation();editarCandidato('${c.id}')">Editar</button><button onclick="event.stopPropagation();eliminarCandidato('${c.id}')" style="color:var(--crit);border-color:var(--crit);">Eliminar</button></td>
     </tr>`;
   }).join('');
 }
@@ -3276,6 +3655,7 @@ document.getElementById('btnGuardarCriterio').addEventListener('click', ()=>{
   }
 
   const pruebasObj = {};
+  const reglasInvalidas = [];
   PRUEBAS_CON_REGLAS.forEach(pid=>{
     if(!pruebasAsignadas.includes(pid)) return; // solo se guardan reglas de pruebas que sí fueron asignadas
     const reglasDuras = Array.from(document.querySelectorAll(`#reglasDurasWrap_${pid} .regla-row`)).map(row => ({
@@ -3288,10 +3668,14 @@ document.getElementById('btnGuardarCriterio').addEventListener('click', ()=>{
       min: parseFloat(row.querySelector('.rb-min').value),
       max: parseFloat(row.querySelector('.rb-max').value)
     }));
+    // una regla con número vacío, o con mínimo mayor que el máximo, nunca se aplicaría: se rechaza
+    const malas = reglasDuras.filter(r=>isNaN(r.valor)).length + reglasBlandas.filter(r=>isNaN(r.min) || isNaN(r.max) || r.min > r.max).length;
+    if(malas){ reglasInvalidas.push(`${PRUEBAS_INFO[pid].nombre}: ${malas} regla(s) sin número o con mínimo mayor que el máximo`); return; }
     if(reglasDuras.length || reglasBlandas.length){
       pruebasObj[pid] = { reglasDuras, reglasBlandas };
     }
   });
+  if(reglasInvalidas.length){ alert('Corrige antes de guardar:\n' + reglasInvalidas.join('\n')); return; }
 
   STATE.criteriosPsicometria = STATE.criteriosPsicometria || [];
   if(criterioEnEdicionId){
@@ -3333,7 +3717,8 @@ if(window['pdfjsLib']){
 
 async function extraerTextoPDF(file){
   const buffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data: buffer}).promise;
+  // isEvalSupported:false = mitigación oficial de CVE-2024-4367 (un PDF malicioso podía ejecutar código)
+  const pdf = await pdfjsLib.getDocument({data: buffer, isEvalSupported: false}).promise;
   let texto = '';
   for(let i=1; i<=pdf.numPages; i++){
     const page = await pdf.getPage(i);
@@ -3478,7 +3863,7 @@ function actualizarFechaPresentacionUI(iso){
 function editarFechaPresentacion(){
   const c = STATE.candidatos.find(c=>c.id===candidatoSeleccionadoId);
   if(!c) return;
-  const actual = (c.psicometria16PF && c.psicometria16PF.fechaPresentacion) || new Date().toISOString().slice(0,10);
+  const actual = (c.psicometria16PF && c.psicometria16PF.fechaPresentacion) || hoyISO();
   const nueva = prompt('Fecha de presentación (AAAA-MM-DD):', actual);
   if(!nueva) return;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(nueva)){ alert('Formato inválido. Usa AAAA-MM-DD.'); return; }
@@ -3699,11 +4084,15 @@ function evaluarReglasPrueba(valores, reglas){
     if(v === undefined || v === null || isNaN(v)) return false;
     return v < r.min || v > r.max;
   });
+  // Un factor con regla pero sin valor NO cuenta como aprobado: antes, sin datos salía "Apto".
+  const faltantes = [...new Set([...(reglas.reglasDuras||[]), ...(reglas.reglasBlandas||[])].map(r=>r.factor))]
+    .filter(f => { const v = (valores||{})[f]; return v === undefined || v === null || v === '' || isNaN(v); });
   let veredicto, clase;
   if(reglaDuraFallida){ veredicto = 'No apto'; clase = 'no-apto'; }
+  else if(faltantes.length > 0){ veredicto = 'Incompleto'; clase = 'pendiente'; }
   else if(reglasBlandasFueraDeRango.length > 0){ veredicto = 'Apto con observaciones'; clase = 'observaciones'; }
   else { veredicto = 'Apto'; clase = 'apto'; }
-  return { veredicto, clase, reglaDuraFallida, reglasBlandasFueraDeRango };
+  return { veredicto, clase, reglaDuraFallida, reglasBlandasFueraDeRango, faltantes };
 }
 
 /** Datos de candidato → valores por prueba, para poder iterar de forma genérica. */
@@ -3723,11 +4112,14 @@ function evaluarCriterioCompleto(c, criterio){
   let duraFallidaGlobal = null;
   const blandasFueraGlobal = [];
 
+  const faltantesGlobal = []; // {prueba, factor} con regla pero sin valor capturado
   PRUEBAS_CON_REGLAS.forEach(pid=>{
     const reglas = (criterio.pruebas || {})[pid];
+    if(!reglas || !((reglas.reglasDuras||[]).length || (reglas.reglasBlandas||[]).length)) return;
+    if((criterio.pruebasAsignadas || []).length && !criterio.pruebasAsignadas.includes(pid)) return;
     const datos = datosPorPrueba[pid];
-    if(!reglas || !datos || !datos.valores) return;
-    const r = evaluarReglasPrueba(datos.valores, reglas);
+    // prueba con reglas pero sin cargar: cuenta como incompleta (todos sus factores faltan), no se brinca
+    const r = evaluarReglasPrueba((datos && datos.valores) || {}, reglas);
     porPrueba[pid] = r;
     if(r.reglaDuraFallida && !duraFallidaGlobal){
       duraFallidaGlobal = Object.assign({ prueba: pid }, r.reglaDuraFallida);
@@ -3735,15 +4127,17 @@ function evaluarCriterioCompleto(c, criterio){
     (r.reglasBlandasFueraDeRango||[]).forEach(rb=>{
       blandasFueraGlobal.push(Object.assign({ prueba: pid }, rb));
     });
+    (r.faltantes||[]).forEach(f=> faltantesGlobal.push({ prueba: pid, factor: f }));
   });
 
   let veredicto, clase;
   if(duraFallidaGlobal){ veredicto = 'No apto'; clase = 'no-apto'; }
+  else if(faltantesGlobal.length > 0){ veredicto = 'Incompleto'; clase = 'pendiente'; }
   else if(blandasFueraGlobal.length > 0){ veredicto = 'Apto con observaciones'; clase = 'observaciones'; }
   else if(Object.keys(porPrueba).length > 0){ veredicto = 'Apto'; clase = 'apto'; }
   else { veredicto = null; clase = 'pendiente'; }
 
-  return { veredicto, clase, reglaDuraFallida: duraFallidaGlobal, reglasBlandasFueraDeRango: blandasFueraGlobal, porPrueba };
+  return { veredicto, clase, reglaDuraFallida: duraFallidaGlobal, reglasBlandasFueraDeRango: blandasFueraGlobal, faltantes: faltantesGlobal, porPrueba };
 }
 
 function renderVeredictoBadge(resultado){
@@ -3763,6 +4157,9 @@ function renderVeredictoBadge(resultado){
     resultado.reglasBlandasFueraDeRango.forEach(r=>{
       exp += `<div class="fx-blanda">• [${PRUEBAS_INFO[r.prueba].nombre}] ${nombreFactor(r.prueba, r.factor)} fuera del rango ${r.min}–${r.max}.</div>`;
     });
+  }
+  if(resultado.faltantes && resultado.faltantes.length){
+    exp += `<div class="fx-blanda">• Falta capturar: ${resultado.faltantes.map(f=>`[${PRUEBAS_INFO[f.prueba].nombre}] ${nombreFactor(f.prueba, f.factor)}`).join(', ')}. Sin esos valores no se puede dar un veredicto.</div>`;
   }
   if(!exp) exp = '<div>Todos los factores evaluados están dentro de rango.</div>';
   document.getElementById('explicacionVeredicto').innerHTML = exp;
@@ -3937,7 +4334,9 @@ function generarSintesisPrueba(valores, reglas, pid, puestoTexto){
     return { parrafo: perfil || 'No hay reglas definidas para esta prueba en el criterio de este puesto — los valores quedan como referencia.', detalles: [] };
   }
 
-  if(resultado.veredicto === 'Apto'){
+  if(resultado.veredicto === 'Incompleto'){
+    parrafo = `${perfil} En ${PRUEBAS_INFO[pid].nombre} faltan valores para evaluar a la persona contra el criterio de ${puestoTexto}: ${resultado.faltantes.map(f=>nombreFactor(pid, f)).join(', ')}.`;
+  } else if(resultado.veredicto === 'Apto'){
     parrafo = `${perfil} En conjunto, este resultado (${PRUEBAS_INFO[pid].nombre}) se ajusta a lo requerido para ${puestoTexto}.`;
   } else if(resultado.veredicto === 'No apto'){
     const r = resultado.reglaDuraFallida;
@@ -4043,9 +4442,13 @@ document.getElementById('btnCalcularVeredicto').addEventListener('click', ()=>{
   const criterio = buscarCriterioParaVacante(vac);
   if(!criterio){ alert('No hay criterio definido para este puesto/planta.'); return; }
 
-  c.psicometria16PF = c.psicometria16PF || {valores:{}, fechaPresentacion: new Date().toISOString().slice(0,10)};
-  c.psicometria16PF.valores = leerGrid(FACTORES_16PF, 'vf');
-  if(!c.psicometria16PF.fechaPresentacion) c.psicometria16PF.fechaPresentacion = new Date().toISOString().slice(0,10);
+  // Solo se leen los valores del 16PF si su tabla está en pantalla (antes se creaba un 16PF vacío
+  // aunque no se hubiera cargado, y con eso el candidato salía "Apto").
+  if(document.getElementById('valores16PFWrap').style.display !== 'none'){
+    c.psicometria16PF = c.psicometria16PF || {valores:{}, fechaPresentacion: hoyISO()};
+    c.psicometria16PF.valores = leerGrid(FACTORES_16PF, 'vf');
+    if(!c.psicometria16PF.fechaPresentacion) c.psicometria16PF.fechaPresentacion = hoyISO();
+  }
 
   const pidActual = document.getElementById('otraPruebaSelect').value;
   if(document.getElementById('otraPruebaWrap').style.display !== 'none' && c.psicoOtras && c.psicoOtras[pidActual]){
@@ -4068,14 +4471,14 @@ document.getElementById('btnCalcularVeredicto').addEventListener('click', ()=>{
   renderVeredictoBadge(agregado);
 
   const reglas16pf = (criterio.pruebas||{})['16pf'];
-  if(reglas16pf){
+  if(reglas16pf && c.psicometria16PF){
     renderChartFactoresPrueba(c.psicometria16PF.valores, reglas16pf, '16pf', 'chartCriterioFactores');
     const sintesis16 = generarSintesisPrueba(c.psicometria16PF.valores, reglas16pf, '16pf', puestoTextoActual());
     document.getElementById('sintesisChart16PF').innerHTML = sintesis16.parrafo +
       (sintesis16.detalles.length ? '<br><br>' + sintesis16.detalles.map(d=>'• '+d).join('<br>') : '');
     marcarGridPorResultado('valores16PFGrid', 'vf', reglas16pf, agregado.porPrueba['16pf']);
   }
-  actualizarFechaPresentacionUI(c.psicometria16PF.fechaPresentacion);
+  if(c.psicometria16PF) actualizarFechaPresentacionUI(c.psicometria16PF.fechaPresentacion);
 
   if(document.getElementById('otraPruebaWrap').style.display !== 'none'){
     renderOtraPruebaUI(pidActual);
@@ -4128,6 +4531,12 @@ function generarResumenPsicometrias(agregado, pruebasAnalizadas){
         <strong>Motivo del resultado "No apto":</strong> en <strong>${PRUEBAS_INFO[r.prueba].nombre}</strong>,
         el factor <strong>${nombreFactor(r.prueba, r.factor)}</strong> incumplió el criterio obligatorio
         definido para este puesto (regla: ${r.operador} ${r.valor}).
+      </div>`;
+  } else if(agregado.faltantes && agregado.faltantes.length){
+    alerta = `
+      <div class="imp-alerta-observaciones">
+        <strong>Evaluación incompleta — falta capturar:</strong>
+        ${agregado.faltantes.map(f=>`<div>• [${PRUEBAS_INFO[f.prueba].nombre}] ${nombreFactor(f.prueba, f.factor)}</div>`).join('')}
       </div>`;
   } else if(agregado.reglasBlandasFueraDeRango && agregado.reglasBlandasFueraDeRango.length){
     const items = agregado.reglasBlandasFueraDeRango.map(r=>
@@ -4198,7 +4607,7 @@ function abrirImpresionVeredicto(){
         <h1>Veredicto de Psicometría</h1>
         <div class="imp-sub">Metelmex · Reclutamiento y Selección</div>
       </div>
-      <div class="imp-sub" style="text-align:right;">Generado el ${formatoFechaLegible(new Date().toISOString().slice(0,10))}</div>
+      <div class="imp-sub" style="text-align:right;">Generado el ${formatoFechaLegible(hoyISO())}</div>
     </div>
 
     <div class="imp-veredicto-grande ${c.veredictoPsicometria.clase}">
@@ -4323,6 +4732,9 @@ function cargarSeccionPsicometriaCandidato(c){
           (sintesis16.detalles.length ? '<br><br>' + sintesis16.detalles.map(d=>'• '+d).join('<br>') : '');
         marcarGridPorResultado('valores16PFGrid', 'vf', reglas16pf, resultado16);
       }
+    } else {
+      // sin PDF también se puede capturar a mano: la tabla se muestra vacía desde el inicio
+      renderValores16PFGrid({});
     }
   }
 
@@ -4396,7 +4808,24 @@ function actualizarEstadoNubeRotacion(estado, mensaje){
 
 /** Escritura vía formulario oculto enviado a un <iframe>: evita CORS porque no es una petición fetch/XHR,
  *  es un envío de formulario normal (igual que el navegador manda cualquier <form target="_blank">). */
-function enviarPostPorIframe(url, params){
+/** Envía la escritura y después CONFIRMA con el Apps Script que de verdad se guardó: la respuesta del
+ *  iframe no se puede leer (otro dominio), así que el servidor deja el resultado en caché con un syncId
+ *  y aquí se consulta por JSONP. Antes se daba por bueno cualquier envío, aunque el token fuera incorrecto
+ *  o no hubiera internet. Requiere el Codigo.gs actualizado (acción "estadoSync"). */
+async function enviarPostPorIframe(url, params){
+  if(SOLO_LECTURA) return {ok:false, error:'Modo solo lectura.'};
+  const syncId = Date.now() + '_' + Math.random().toString(36).slice(2);
+  await enviarFormularioPorIframe_(url, {...params, syncId});
+  for(let intento = 0; intento < 6; intento++){
+    const r = await jsonp(url, {action:'estadoSync', token: params.token, syncId}, 15000);
+    if(r.ok && r.estado === 'ok') return {ok:true};
+    if(r.ok && r.estado) return {ok:false, error: String(r.estado).replace(/^error:/,'')};
+    if(!r.ok) return {ok:false, error: r.error || 'No se pudo confirmar el guardado.'};
+    await new Promise(res => setTimeout(res, 2500)); // aún no termina de guardar: se vuelve a preguntar
+  }
+  return {ok:false, error:'El Apps Script no confirmó el guardado.'};
+}
+function enviarFormularioPorIframe_(url, params){
   return new Promise((resolve)=>{
     const nombreIframe = 'iframePost_' + Date.now();
     const iframe = document.createElement('iframe');
@@ -4433,18 +4862,7 @@ function enviarPostPorIframe(url, params){
 
 /** Lectura vía JSONP contra el Apps Script (igual patrón que probarConexionJSONP). */
 function leerRotacionDesdeSheetJSONP(url, token){
-  return new Promise((resolve)=>{
-    if(!url){ resolve({ok:false, error:'no-config'}); return; }
-    const cbName = 'cbRotacion_' + Date.now();
-    let resuelto = false;
-    const script = document.createElement('script');
-    window[cbName] = (resp)=>{ resuelto = true; cleanup(); resolve(resp || {ok:false, error:'Respuesta vacía.'}); };
-    function cleanup(){ delete window[cbName]; if(script.parentNode) script.parentNode.removeChild(script); }
-    script.onerror = ()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'No se pudo contactar esa URL.'}); } };
-    script.src = url + '?action=getRotacionData&token=' + encodeURIComponent(token) + '&callback=' + cbName;
-    document.body.appendChild(script);
-    setTimeout(()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'Tiempo de espera agotado (el catálogo es grande y Google Apps Script puede tardar en "despertar" la primera vez — intenta de nuevo).'}); } }, 30000);
-  });
+  return jsonp(url, {action:'getRotacionData', token}, 30000, 'Tiempo de espera agotado (el catálogo es grande y Google Apps Script puede tardar en "despertar" la primera vez — intenta de nuevo).');
 }
 
 document.getElementById('btnGuardarRotacionNube').addEventListener('click', async ()=>{
@@ -4458,24 +4876,18 @@ document.getElementById('btnGuardarRotacionNube').addEventListener('click', asyn
   if(!confirm(`Esto sube ${cat.length} empleado(s). Los cambios se combinan por empleado con lo que ya esté en el Google Sheet (no se pisa lo que haya agregado otra persona), pero un empleado que edites aquí sí prevalece sobre versiones más viejas de ese mismo empleado. ¿Confirmas que quieres guardar en la nube?`)) return;
 
   actualizarEstadoNubeRotacion('cargando', 'Guardando en la nube…');
-  const prepCatM = prepararParaSubir_('catalogoEmpleados', url, STATE.catalogoEmpleados||[], 'codigo');
-  const prepSegM = prepararParaSubir_('seguimientoBajas', url, STATE.seguimientoBajas||[], 'codigo');
-  const payload = {
-    catalogoEmpleados: prepCatM.registros, catalogoEmpleadosEliminados: prepCatM.eliminados,
-    seguimientoBajas: prepSegM.registros, seguimientoBajasEliminados: prepSegM.eliminados
-  };
+  const prep = prepararRotacion_(url);
   const resultado = await enviarPostPorIframe(url, {
     action: 'guardarRotacionData',
     token: token,
-    data: JSON.stringify(payload)
+    data: JSON.stringify(prep.payload)
   });
   if(resultado.ok){
     registrarConteoBueno_('rotacion', url, (STATE.catalogoEmpleados||[]).length + (STATE.seguimientoBajas||[]).length);
-    guardarSnapshot_('catalogoEmpleados', url, prepCatM.registros, 'codigo');
-    guardarSnapshot_('seguimientoBajas', url, prepSegM.registros, 'codigo');
+    prep.guardarSnapshots();
     actualizarEstadoNubeRotacion('ok', 'Guardado en la nube el ' + new Date().toLocaleString('es-MX') + '.');
   } else {
-    actualizarEstadoNubeRotacion('error', 'No se pudo confirmar el guardado. Revisa la URL/token en "Conexión" e inténtalo de nuevo.');
+    actualizarEstadoNubeRotacion('error', 'No se guardó: ' + resultado.error);
   }
 });
 
@@ -4493,7 +4905,8 @@ document.getElementById('btnCargarRotacionNube').addEventListener('click', async
   if(resultado.ok){
     STATE.catalogoEmpleados = resultado.catalogoEmpleados || [];
     STATE.seguimientoBajas = resultado.seguimientoBajas || [];
-    STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+    aplicarCalculadoraDeNube_(resultado, url);
+    STATE.catalogoEmpleadosActualizado = hoyISO();
     registrarConteoBueno_('rotacion', url, STATE.catalogoEmpleados.length + STATE.seguimientoBajas.length);
     guardarSnapshot_('catalogoEmpleados', url, STATE.catalogoEmpleados, 'codigo');
     guardarSnapshot_('seguimientoBajas', url, STATE.seguimientoBajas, 'codigo');
@@ -4531,18 +4944,7 @@ function actualizarEstadoNubeReclutamiento(estado, mensaje){
 }
 
 function leerReclutamientoDesdeSheetJSONP(url, token){
-  return new Promise((resolve)=>{
-    if(!url){ resolve({ok:false, error:'no-config'}); return; }
-    const cbName = 'cbReclutamiento_' + Date.now();
-    let resuelto = false;
-    const script = document.createElement('script');
-    window[cbName] = (resp)=>{ resuelto = true; cleanup(); resolve(resp || {ok:false, error:'Respuesta vacía.'}); };
-    function cleanup(){ delete window[cbName]; if(script.parentNode) script.parentNode.removeChild(script); }
-    script.onerror = ()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'No se pudo contactar esa URL.'}); } };
-    script.src = url + '?action=getReclutamientoData&token=' + encodeURIComponent(token) + '&callback=' + cbName;
-    document.body.appendChild(script);
-    setTimeout(()=>{ if(!resuelto){ cleanup(); resolve({ok:false, error:'Tiempo de espera agotado (el catálogo puede ser grande y Google Apps Script puede tardar en "despertar" la primera vez — intenta de nuevo).'}); } }, 30000);
-  });
+  return jsonp(url, {action:'getReclutamientoData', token}, 30000, 'Tiempo de espera agotado (el catálogo puede ser grande y Google Apps Script puede tardar en "despertar" la primera vez — intenta de nuevo).');
 }
 
 document.getElementById('btnGuardarReclutamientoNube').addEventListener('click', async ()=>{
@@ -4557,24 +4959,18 @@ document.getElementById('btnGuardarReclutamientoNube').addEventListener('click',
   if(!confirm(`Esto sube ${vac.length} vacante(s) y ${cand.length} candidato(s). Los cambios se combinan por registro con lo que ya esté en el Google Sheet (no se pisa lo que haya agregado otra persona), pero un registro que edites aquí sí prevalece sobre versiones más viejas de ese mismo registro. ¿Confirmas que quieres guardar en la nube?`)) return;
 
   actualizarEstadoNubeReclutamiento('cargando', 'Guardando en la nube…');
-  const prepVacM = prepararParaSubir_('vacantes', url, vac, 'id');
-  const prepCandM = prepararParaSubir_('candidatos', url, cand, 'id');
-  const payload = {
-    vacantes: prepVacM.registros, vacantesEliminados: prepVacM.eliminados,
-    candidatos: prepCandM.registros, candidatosEliminados: prepCandM.eliminados
-  };
+  const prep = prepararReclutamiento_(url);
   const resultado = await enviarPostPorIframe(url, {
     action: 'guardarReclutamientoData',
     token: token,
-    data: JSON.stringify(payload)
+    data: JSON.stringify(prep.payload)
   });
   if(resultado.ok){
     registrarConteoBueno_('reclutamiento', url, vac.length + cand.length);
-    guardarSnapshot_('vacantes', url, prepVacM.registros, 'id');
-    guardarSnapshot_('candidatos', url, prepCandM.registros, 'id');
+    prep.guardarSnapshots();
     actualizarEstadoNubeReclutamiento('ok', 'Guardado en la nube el ' + new Date().toLocaleString('es-MX') + '.');
   } else {
-    actualizarEstadoNubeReclutamiento('error', 'No se pudo confirmar el guardado. Revisa la URL/token en "Conexión" e inténtalo de nuevo.');
+    actualizarEstadoNubeReclutamiento('error', 'No se guardó: ' + resultado.error);
   }
 });
 
@@ -4592,6 +4988,7 @@ document.getElementById('btnCargarReclutamientoNube').addEventListener('click', 
   if(resultado.ok){
     STATE.vacantes = resultado.vacantes || [];
     STATE.candidatos = resultado.candidatos || [];
+    aplicarCriteriosDeNube_(resultado, url);
     registrarConteoBueno_('reclutamiento', url, STATE.vacantes.length + STATE.candidatos.length);
     guardarSnapshot_('vacantes', url, STATE.vacantes, 'id');
     guardarSnapshot_('candidatos', url, STATE.candidatos, 'id');
@@ -4680,14 +5077,17 @@ function esFechaValida(f){
 function sincronizarSeguimientoBajas(){
   STATE.seguimientoBajas = STATE.seguimientoBajas || [];
   const existentes = new Set(STATE.seguimientoBajas.map(s=>String(s.codigo)));
+  let agregados = 0;
   (STATE.catalogoEmpleados||[]).forEach(e=>{
     if((e.estatus||'').toUpperCase() === 'BAJA' && !existentes.has(String(e.codigo))){
       STATE.seguimientoBajas.push({
         codigo: e.codigo, mesBaja:'', fechaBajaManual:'', clasificacion:'', motivo:'', causa:'', comentarios:''
       });
+      agregados++;
     }
   });
-  saveLocal(STATE);
+  // solo se guarda si hubo algo nuevo: antes cada búsqueda/repintado de la tabla subía todo el catálogo a la nube
+  if(agregados) saveLocal(STATE);
 }
 
 function efectivaFechaBaja(codigo){
@@ -4733,7 +5133,8 @@ function filtrarBajas(){
   const clasifFiltro = document.getElementById('bajaFiltroClasificacion').value;
   const anioFiltro = document.getElementById('bajaFiltroAnio').value;
 
-  const empleadosBaja = (STATE.catalogoEmpleados||[]).filter(e => (e.estatus||'').toUpperCase() === 'BAJA');
+  const estatus = document.getElementById('bajaFiltroEstatus').value;
+  const empleadosBaja = (STATE.catalogoEmpleados||[]).filter(e => (e.estatus||'').toUpperCase() === estatus);
 
   return empleadosBaja.filter(e=>{
     if(busq && !((e.nombre||'').toLowerCase().includes(busq) || String(e.codigo).toLowerCase().includes(busq))) return false;
@@ -4754,8 +5155,10 @@ function renderBajasSeguimiento(){
   const empty = document.getElementById('bajaEmptyState');
   const filtrados = filtrarBajas();
 
-  if((STATE.catalogoEmpleados||[]).filter(e=>(e.estatus||'').toUpperCase()==='BAJA').length === 0){
+  const estatusTabla = document.getElementById('bajaFiltroEstatus').value;
+  if((STATE.catalogoEmpleados||[]).filter(e=>(e.estatus||'').toUpperCase()===estatusTabla).length === 0){
     tbody.innerHTML = ''; empty.style.display='block';
+    empty.textContent = estatusTabla === 'ALTA' ? 'No hay empleados activos (reingresos) en el catálogo.' : 'No hay empleados con estatus BAJA en el catálogo cargado.';
     document.getElementById('bajaPaginacion').innerHTML = '';
     return;
   }
@@ -4778,6 +5181,7 @@ function renderBajasSeguimiento(){
       <td>${e.puesto}</td>
       <td>${e.fechaAlta || '—'}</td>
       <td>${esFechaValida(e.fechaBaja) ? e.fechaBaja : '—'}</td>
+      ${(e.estatus||'').toUpperCase() === 'ALTA' ? `<td colspan="6" style="color:var(--text-dim);">Activo — sus bajas anteriores están en los registros ${e.codigo}-P1, -P2…</td>` : `
       <td style="background:#FFFBF2;"><input type="text" value="${(seg.mesBaja||'').replace(/"/g,'&quot;')}" placeholder="Ej. Marzo" onchange="editarCampoBaja('${e.codigo}','mesBaja',this.value)" style="width:80px;"></td>
       <td style="background:#FFFBF2;"><input type="date" value="${seg.fechaBajaManual||''}" onchange="editarCampoBaja('${e.codigo}','fechaBajaManual',this.value)"></td>
       <td style="background:#FFFBF2;">
@@ -4801,7 +5205,7 @@ function renderBajasSeguimiento(){
         </select>
         ${causaFalta?'<div style="color:var(--crit);font-size:10.5px;margin-top:2px;">Falta indicar causa</div>':''}
       </td>
-      <td style="background:#FFFBF2;"><input type="text" value="${(seg.comentarios||'').replace(/"/g,'&quot;')}" onchange="editarCampoBaja('${e.codigo}','comentarios',this.value)" style="width:150px;"></td>
+      <td style="background:#FFFBF2;"><input type="text" value="${(seg.comentarios||'').replace(/"/g,'&quot;')}" onchange="editarCampoBaja('${e.codigo}','comentarios',this.value)" style="width:150px;"></td>`}
       <td style="background:#F4F8FA;text-align:center;">${calc.antiguedad}</td>
       <td style="background:#F4F8FA;text-align:center;">${calc.anioBaja}</td>
       <td style="background:#F4F8FA;text-align:center;">${calc.estatusActual}</td>
@@ -4839,19 +5243,11 @@ function editarCampoBaja(codigo, campo, valor){
 document.getElementById('bajaBuscar').addEventListener('input', ()=>{ paginaBajas=1; renderBajasSeguimiento(); });
 document.getElementById('bajaFiltroClasificacion').addEventListener('change', ()=>{ paginaBajas=1; renderBajasSeguimiento(); });
 document.getElementById('bajaFiltroAnio').addEventListener('change', ()=>{ paginaBajas=1; renderBajasSeguimiento(); });
+document.getElementById('bajaFiltroEstatus').addEventListener('change', ()=>{ paginaBajas=1; renderBajasSeguimiento(); });
 
 /* =========================================================
    AUTOLLENAR CALCULADORA desde el catálogo + seguimiento de bajas
    ========================================================= */
-function colaboradoresActivosEn(fechaLimiteISO){
-  return (STATE.catalogoEmpleados||[]).filter(e=>{
-    if(!esFechaValida(e.fechaAlta)) return false;
-    if(e.fechaAlta > fechaLimiteISO) return false;
-    const fBaja = efectivaFechaBaja(e.codigo);
-    if(fBaja && fBaja <= fechaLimiteISO) return false;
-    return true;
-  }).length;
-}
 function bajasEnAnio(anio, tipo){
   return (STATE.catalogoEmpleados||[]).filter(e=>{
     if((e.estatus||'').toUpperCase() !== 'BAJA') return false;
@@ -4868,14 +5264,16 @@ document.getElementById('btnAutollenarDesdeBajas').addEventListener('click', ()=
     return;
   }
   sincronizarSeguimientoBajas();
-  ['2025','2026'].forEach(anio=>{
+  pintarAniosCalculadora(); // por si el catálogo trae años que todavía no tenían recuadro
+  const anios = aniosCalculadora();
+  anios.forEach(anio=>{
     // Solo se autollenan Bajas voluntarias y forzadas. "Colaboradores al inicio/final" se capturan a mano,
     // porque el catálogo solo trae las personas que causaron BAJA (no la plantilla activa completa),
     // así que calcularlo desde ahí daría una cifra incorrecta.
     document.getElementById('rot'+anio+'Voluntarias').value = bajasEnAnio(anio, 'Voluntaria');
     document.getElementById('rot'+anio+'Forzadas').value = bajasEnAnio(anio, 'Forzada');
   });
-  alert('Se autollenaron "Bajas voluntarias" y "Bajas forzadas" de 2025 y 2026 desde la pestaña "Bajas y seguimiento". Captura tú "Colaboradores al inicio" y "Colaboradores al final" de cada año y presiona "Calcular rotación".');
+  alert(`Se autollenaron "Bajas voluntarias" y "Bajas forzadas" de ${anios.join(', ')} desde la pestaña "Bajas y seguimiento". Captura tú "Colaboradores al inicio" y "Colaboradores al final" de cada año y presiona "Calcular rotación".`);
 });
 
 /* =========================================================
@@ -5008,65 +5406,112 @@ function parsearHojaBajasCompleto(ws){
     const codigo = leer(f,'codigo');
     if(codigo === '') return;
 
-    const fAlta1 = formatearFecha(leer(f,'fechaAlta1'));
-    const fBaja1 = formatearFecha(leer(f,'fechaBaja1'));
-    const fAlta2 = formatearFecha(leer(f,'fechaAlta2'));
-    const fBaja2 = formatearFecha(leer(f,'fechaBaja2'));
-    const huboRecontratacion = esFechaValida(fAlta2);
-
-    // si hubo un segundo periodo de contratación, se usa ese como el vigente (es el más reciente)
-    const fechaAlta = huboRecontratacion ? fAlta2 : fAlta1;
-    const fechaBaja = huboRecontratacion ? fBaja2 : fBaja1;
-    const clasificacion = mapearClasificacion(huboRecontratacion ? leer(f,'clasificacion2') : leer(f,'clasificacion1'));
-    const motivoRaw = huboRecontratacion ? leer(f,'motivo2') : leer(f,'motivo1');
-    let motivo = mapearMotivo(motivoRaw);
-    let causaRaw = huboRecontratacion ? leer(f,'causa2') : leer(f,'causa1');
-    // Inconsistencia detectada en algunas filas (ej. altas/bajas 2, sin columna CAUSA 2 en el archivo):
-    // la columna de Motivo trae directamente el texto de la causa (ej. "Horario de trabajo") en vez de
-    // "Renuncia"/"Abandono"/"Término de contrato". Si la clasificación es Voluntaria y ese texto coincide
-    // con una causa conocida del catálogo, se asume que es una Renuncia y esa causa se recupera de ahí.
-    if(!motivo && clasificacion === 'Voluntaria' && String(motivoRaw||'').trim()){
-      const posibleCausa = normalizarCausaRenuncia(motivoRaw);
-      if(CAUSAS_RENUNCIA.includes(posibleCausa)){
-        motivo = 'Renuncia';
-        if(!String(causaRaw||'').trim()) causaRaw = motivoRaw;
-      }
-    }
-    const causa = motivo === 'Renuncia' ? normalizarCausaRenuncia(causaRaw) : '';
-
-    resultado.push({
+    const datosEmp = {
       codigo,
       nombre: String(leer(f,'nombre')||'').trim(),
       area: String(leer(f,'area')||'').trim(),
       puesto: String(leer(f,'puesto')||'').trim(),
-      tipoEmpleado: String(leer(f,'tipoEmpleado')||'').trim().toUpperCase(),
-      fechaAlta, fechaBaja, clasificacion, motivo, causa, huboRecontratacion
-    });
+      tipoEmpleado: String(leer(f,'tipoEmpleado')||'').trim().toUpperCase()
+    };
+    // Cada periodo (alta 1/baja 1 y, si hubo recontratación, alta 2/baja 2) sale como su propio registro:
+    // antes solo se conservaba el más reciente y la primera baja se perdía de las estadísticas.
+    const leerPeriodo = (n)=>{
+      const fechaAlta = formatearFecha(leer(f,'fechaAlta'+n));
+      const fechaBaja = formatearFecha(leer(f,'fechaBaja'+n));
+      const clasificacion = mapearClasificacion(leer(f,'clasificacion'+n));
+      const motivoRaw = leer(f,'motivo'+n);
+      let motivo = mapearMotivo(motivoRaw);
+      let causaRaw = leer(f,'causa'+n);
+      // Inconsistencia detectada en algunas filas (ej. altas/bajas 2, sin columna CAUSA 2 en el archivo):
+      // la columna de Motivo trae directamente el texto de la causa (ej. "Horario de trabajo") en vez de
+      // "Renuncia"/"Abandono"/"Término de contrato". Si la clasificación es Voluntaria y ese texto coincide
+      // con una causa conocida del catálogo, se asume que es una Renuncia y esa causa se recupera de ahí.
+      if(!motivo && clasificacion === 'Voluntaria' && String(motivoRaw||'').trim()){
+        const posibleCausa = normalizarCausaRenuncia(motivoRaw);
+        if(CAUSAS_RENUNCIA.includes(posibleCausa)){
+          motivo = 'Renuncia';
+          if(!String(causaRaw||'').trim()) causaRaw = motivoRaw;
+        }
+      }
+      const causa = motivo === 'Renuncia' ? normalizarCausaRenuncia(causaRaw) : '';
+      return {...datosEmp, fechaAlta, fechaBaja, clasificacion, motivo, causa};
+    };
+    resultado.push(leerPeriodo(1));
+    if(esFechaValida(formatearFecha(leer(f,'fechaAlta2')))) resultado.push(leerPeriodo(2));
   });
   return resultado;
 }
 
+/* =========================================================
+   RECONTRATACIONES — un registro por periodo
+   El registro con la ficha original es siempre el periodo vigente (el más reciente); cada periodo
+   anterior que terminó en baja queda archivado como "<ficha>-P1", "<ficha>-P2"… con su propio
+   seguimiento (clasificación, motivo, causa). Así cada baja cuenta en rotación, permanencia y causas.
+   ponytail: un registro por periodo en vez de rediseñar el modelo a "eventos de baja"; si se necesita
+   ver la trayectoria completa de una persona, agrupar por codigoBase.
+   ========================================================= */
+function aplicarDatosBaja_(seg, p){
+  seg.fechaBajaManual = p.fechaBaja || seg.fechaBajaManual || '';
+  seg.mesBaja = mesDeFecha(seg.fechaBajaManual) || seg.mesBaja || '';
+  if(p.clasificacion) seg.clasificacion = p.clasificacion; // solo se sobreescribe si el archivo sí trae clasificación
+  if(p.motivo) seg.motivo = p.motivo; // Renuncia / Abandono / Término de contrato
+  if(p.motivo === 'Renuncia' && p.causa) seg.causa = p.causa;
+  if(p.motivo && p.motivo !== 'Renuncia') seg.causa = ''; // limpia causa si ya no aplica
+  ['clasificacion','motivo','causa','comentarios'].forEach(k=>{ if(seg[k] === undefined) seg[k] = ''; });
+}
+/** Crea o actualiza el registro archivado de un periodo anterior (se identifica por ficha base + fecha de baja). */
+function upsertPeriodoArchivado_(base, p, segPrevio){
+  base = String(base);
+  const cat = STATE.catalogoEmpleados, segs = STATE.seguimientoBajas;
+  let emp = cat.find(e => String(e.codigoBase) === base && e.fechaBaja === p.fechaBaja);
+  if(!emp){
+    let n = 1;
+    while(cat.some(e => String(e.codigo) === `${base}-P${n}`)) n++;
+    emp = { codigo: `${base}-P${n}`, codigoBase: base, departamento:'', clasifKpi:'', fechaReingreso:'' };
+    cat.push(emp);
+  }
+  Object.assign(emp, { nombre: p.nombre, area: p.area, puesto: p.puesto, tipoEmpleado: p.tipoEmpleado || emp.tipoEmpleado || '',
+    fechaAlta: p.fechaAlta, fechaBaja: p.fechaBaja, estatus: 'BAJA' });
+  let seg = segs.find(s => String(s.codigo) === emp.codigo);
+  if(!seg){ seg = {...(segPrevio||{}), codigo: emp.codigo}; segs.push(seg); }
+  aplicarDatosBaja_(seg, p);
+  return emp;
+}
+/** Reingreso capturado a mano: el periodo que acaba de cerrarse (con su baja) se archiva antes de abrir el nuevo. */
+function archivarPeriodoActual_(emp){
+  const fBaja = efectivaFechaBaja(emp.codigo);
+  if(!esFechaValida(fBaja)) return;
+  const seg = (STATE.seguimientoBajas||[]).find(s=>String(s.codigo)===String(emp.codigo));
+  upsertPeriodoArchivado_(emp.codigoBase || emp.codigo,
+    {nombre: emp.nombre, area: emp.area, puesto: emp.puesto, tipoEmpleado: emp.tipoEmpleado, fechaAlta: emp.fechaAlta, fechaBaja: fBaja}, seg);
+  STATE.seguimientoBajas = STATE.seguimientoBajas.filter(s=>String(s.codigo)!==String(emp.codigo));
+}
+
 document.getElementById('btnDescargarPlantillaBajasCompleto').addEventListener('click', ()=>{
-  const bajas = (STATE.catalogoEmpleados||[]).filter(e => (e.estatus||'').toUpperCase()==='BAJA');
-  const headers = ['FICHA','NOMBRE','PUESTO','TIPO DE EMPLEADO','PLANTA','FECHA DE ALTA 1','Fecha de Baja 1','MOTIVO 1','FECHA DE ALTA 2','Fecha de Baja 2','MOTIVO 2'];
-  const filas = bajas.length > 0 ? bajas.map(e=>{
+  // Mismas columnas que lee "Cargar archivo de bajas" (antes la clasificación iba en "MOTIVO 1" y faltaban
+  // Motivo y Causa, así que al volver a subirla se perdían). Una fila por periodo con la ficha original:
+  // al subirla de nuevo, los periodos de la misma ficha se vuelven a juntar.
+  const empleados = STATE.catalogoEmpleados || [];
+  const headers = ['FICHA','NOMBRE','PUESTO','TIPO DE EMPLEADO','PLANTA','FECHA DE ALTA 1','FECHA DE BAJA 1','CLASIFICACION 1','MOTIVO 1','CAUSA 1','FECHA DE ALTA 2','FECHA DE BAJA 2','CLASIFICACION 2','MOTIVO 2','CAUSA 2'];
+  const filas = empleados.length > 0 ? empleados.map(e=>{
     const seg = (STATE.seguimientoBajas||[]).find(s=>String(s.codigo)===String(e.codigo)) || {};
+    const esBaja = (e.estatus||'').toUpperCase()==='BAJA';
     return {
-      FICHA: e.codigo, NOMBRE: e.nombre, PUESTO: e.puesto, 'TIPO DE EMPLEADO': e.tipoEmpleado||'', PLANTA: e.area,
-      'FECHA DE ALTA 1': e.fechaAlta||'', 'Fecha de Baja 1': (seg.fechaBajaManual || e.fechaBaja || ''),
-      'MOTIVO 1': (seg.clasificacion||'').toUpperCase(),
-      'FECHA DE ALTA 2':'', 'Fecha de Baja 2':'', 'MOTIVO 2':''
+      FICHA: e.codigoBase || e.codigo, NOMBRE: e.nombre, PUESTO: e.puesto, 'TIPO DE EMPLEADO': e.tipoEmpleado||'', PLANTA: e.area,
+      'FECHA DE ALTA 1': e.fechaAlta||'', 'FECHA DE BAJA 1': esBaja ? (efectivaFechaBaja(e.codigo) || '') : '',
+      'CLASIFICACION 1': esBaja ? (seg.clasificacion||'').toUpperCase() : '',
+      'MOTIVO 1': esBaja ? (seg.motivo||'') : '', 'CAUSA 1': esBaja ? (seg.causa||'') : ''
     };
   }) : [{}];
   const ws = XLSX.utils.json_to_sheet(filas, {header: headers});
-  if(bajas.length === 0){
+  if(empleados.length === 0){
     XLSX.utils.sheet_add_aoa(ws, [headers], {origin:'A1'});
-    ws['!ref'] = 'A1:K1';
+    ws['!ref'] = 'A1:O1';
   }
-  ws['!cols'] = [{wch:10},{wch:32},{wch:26},{wch:16},{wch:14},{wch:14},{wch:14},{wch:12},{wch:14},{wch:14},{wch:12}];
+  ws['!cols'] = [{wch:10},{wch:32},{wch:26},{wch:16},{wch:14},{wch:14},{wch:14},{wch:14},{wch:18},{wch:28},{wch:14},{wch:14},{wch:14},{wch:18},{wch:28}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Bajas');
-  XLSX.writeFile(wb, 'Plantilla_Bajas_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  XLSX.writeFile(wb, 'Plantilla_Bajas_' + hoyISO() + '.xlsx');
 });
 
 document.getElementById('btnCargarBajasCompleto').addEventListener('click', async ()=>{
@@ -5089,58 +5534,83 @@ document.getElementById('btnCargarBajasCompleto').addEventListener('click', asyn
     STATE.catalogoEmpleados = STATE.catalogoEmpleados || [];
     STATE.seguimientoBajas = STATE.seguimientoBajas || [];
 
-    // si un mismo código aparece en más de una hoja (ej. baja en 2025 y otra vez en 2026), se queda con la fecha de baja más reciente
+    // Agrupa todos los periodos de cada ficha (pueden venir de varias hojas, ej. baja en 2025 y otra en 2026).
+    // El mismo periodo repetido (misma alta y baja) se toma una sola vez.
     const porCodigo = {};
     registros.forEach(r=>{
-      const previo = porCodigo[r.codigo];
-      if(!previo || (esFechaValida(r.fechaBaja) && (!esFechaValida(previo.fechaBaja) || r.fechaBaja > previo.fechaBaja))){
-        porCodigo[r.codigo] = r;
-      }
+      const k = String(r.codigo);
+      porCodigo[k] = porCodigo[k] || {};
+      porCodigo[k][r.fechaAlta + '|' + r.fechaBaja] = r;
     });
 
-    let procesados = 0, voluntarias = 0, forzadas = 0, sinClasificar = 0, recontrataciones = 0;
+    let procesados = 0, voluntarias = 0, forzadas = 0, sinClasificar = 0, recontrataciones = 0, activos = 0;
+    const contar = (p)=>{
+      if(p.clasificacion === 'Voluntaria') voluntarias++;
+      else if(p.clasificacion === 'Forzada') forzadas++;
+      else sinClasificar++;
+      procesados++;
+    };
 
-    Object.values(porCodigo).forEach(r=>{
-      let emp = STATE.catalogoEmpleados.find(e=>String(e.codigo)===String(r.codigo));
+    Object.keys(porCodigo).forEach(codigo=>{
+      // orden cronológico: los periodos con baja por fecha de baja; un periodo sin baja (sigue activo) va al final
+      const periodos = Object.values(porCodigo[codigo]).sort((a,b)=>{
+        const ka = esFechaValida(a.fechaBaja) ? a.fechaBaja : '9999';
+        const kb = esFechaValida(b.fechaBaja) ? b.fechaBaja : '9999';
+        return ka === kb ? String(a.fechaAlta).localeCompare(String(b.fechaAlta)) : ka.localeCompare(kb);
+      });
+      const vigente = periodos[periodos.length - 1];
+      const anteriores = periodos.slice(0, -1).filter(p => esFechaValida(p.fechaBaja));
+      if(anteriores.length) recontrataciones++;
+
+      let emp = STATE.catalogoEmpleados.find(e=>String(e.codigo)===codigo);
+      const segActual = STATE.seguimientoBajas.find(s=>String(s.codigo)===codigo);
+      anteriores.forEach(p=>{
+        // si ese periodo era el que antes estaba guardado como vigente, se conserva lo que ya se había capturado a mano
+        const segPrevio = (emp && emp.fechaBaja === p.fechaBaja && segActual) ? {...segActual} : null;
+        upsertPeriodoArchivado_(codigo, p, segPrevio);
+        contar(p);
+      });
+
       if(!emp){
-        emp = { codigo: r.codigo, departamento:'', clasifKpi:'', fechaReingreso:'' };
+        emp = { codigo: vigente.codigo, departamento:'', clasifKpi:'', fechaReingreso:'' };
         STATE.catalogoEmpleados.push(emp);
       }
-      emp.nombre = r.nombre || emp.nombre || '';
-      emp.area = r.area || emp.area || '';
-      emp.puesto = r.puesto || emp.puesto || '';
-      if(r.tipoEmpleado) emp.tipoEmpleado = r.tipoEmpleado;
-      if(esFechaValida(r.fechaAlta)) emp.fechaAlta = r.fechaAlta;
-      emp.fechaBaja = r.fechaBaja || emp.fechaBaja || '';
-      emp.estatus = 'BAJA';
+      emp.nombre = vigente.nombre || emp.nombre || '';
+      emp.area = vigente.area || emp.area || '';
+      emp.puesto = vigente.puesto || emp.puesto || '';
+      if(vigente.tipoEmpleado) emp.tipoEmpleado = vigente.tipoEmpleado;
+      if(esFechaValida(vigente.fechaAlta)) emp.fechaAlta = vigente.fechaAlta;
 
-      let seg = STATE.seguimientoBajas.find(s=>String(s.codigo)===String(r.codigo));
-      if(!seg){
-        seg = {codigo:r.codigo, mesBaja:'', fechaBajaManual:'', clasificacion:'', motivo:'', causa:'', comentarios:''};
-        STATE.seguimientoBajas.push(seg);
+      if(esFechaValida(vigente.fechaBaja)){
+        emp.fechaBaja = vigente.fechaBaja;
+        emp.estatus = 'BAJA';
+        let seg = segActual && STATE.seguimientoBajas.includes(segActual) ? segActual : null;
+        if(!seg){ seg = {codigo: emp.codigo, mesBaja:'', fechaBajaManual:'', clasificacion:'', motivo:'', causa:'', comentarios:''}; STATE.seguimientoBajas.push(seg); }
+        else if(anteriores.some(p=>p.fechaBaja === seg.fechaBajaManual)){
+          // el seguimiento que tenía era de un periodo que ya quedó archivado: empieza limpio para el vigente
+          Object.assign(seg, {clasificacion:'', motivo:'', causa:'', comentarios:''});
+        }
+        aplicarDatosBaja_(seg, vigente);
+        contar(vigente);
+      } else {
+        // recontratado y sigue trabajando: ya no cuenta como baja (antes se marcaba BAJA sin fecha)
+        emp.fechaBaja = '';
+        emp.estatus = 'ALTA';
+        STATE.seguimientoBajas = STATE.seguimientoBajas.filter(s=>String(s.codigo)!==codigo);
+        activos++;
       }
-      seg.fechaBajaManual = r.fechaBaja || seg.fechaBajaManual;
-      seg.mesBaja = mesDeFecha(seg.fechaBajaManual) || seg.mesBaja;
-      if(r.clasificacion) seg.clasificacion = r.clasificacion; // solo se sobreescribe si el archivo sí trae clasificación
-      if(r.motivo) seg.motivo = r.motivo; // Renuncia / Abandono / Término de contrato
-      if(r.motivo === 'Renuncia' && r.causa) seg.causa = r.causa;
-      if(r.motivo && r.motivo !== 'Renuncia') seg.causa = ''; // limpia causa si ya no aplica
-
-      if(r.clasificacion === 'Voluntaria') voluntarias++;
-      else if(r.clasificacion === 'Forzada') forzadas++;
-      else sinClasificar++;
-      if(r.huboRecontratacion) recontrataciones++;
-      procesados++;
     });
 
-    STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+    STATE.catalogoEmpleadosActualizado = hoyISO();
     saveLocal(STATE);
 
     actualizarResumenCatalogoEmpleados();
     paginaBajas = 1; poblarFiltroAnioBajas(); renderBajasSeguimiento();
 
     fileInput.value = '';
-    alert(`Carga completa: ${procesados} bajas procesadas (${voluntarias} voluntarias, ${forzadas} forzadas, ${sinClasificar} sin clasificar)${recontrataciones?`. Se detectaron ${recontrataciones} caso(s) de recontratación — se usó el periodo más reciente.`:'.'}`);
+    alert(`Carga completa: ${procesados} bajas procesadas (${voluntarias} voluntarias, ${forzadas} forzadas, ${sinClasificar} sin clasificar).`
+      + (recontrataciones ? `\nSe detectaron ${recontrataciones} persona(s) con más de un periodo: cada baja quedó como registro aparte (ficha-P1, ficha-P2…).` : '')
+      + (activos ? `\n${activos} persona(s) no tienen fecha de baja en su periodo más reciente: quedaron como ACTIVOS (filtro "Estatus" de la tabla).` : ''));
   }catch(err){
     alert('No se pudo leer el archivo. Verifica que tenga las columnas de Ficha/Código, Fecha de Alta y Fecha de Baja.');
   }
@@ -5379,16 +5849,17 @@ function renderResumenRotacion(){
     document.getElementById('kpiResAntiguedad').textContent = '—';
   }
 
-  // ---- % Rotación por año (2025/2026, igual que la calculadora) ----
-  const anios = ['2025','2026'];
+  // ---- % Rotación por año ----
+  // La plantilla (inicio/fin) sale de la Calculadora: el catálogo solo trae a quienes causaron baja,
+  // así que contarla desde ahí inflaba el %. Las bajas sí salen del catálogo clasificado.
+  const datosCalc = STATE.rotacionData || {};
+  const anios = Object.keys(datosCalc).sort();
   const voluntariaData = [], forzadaData = [], etiquetasAnios = [];
   anios.forEach(anio=>{
-    const inicio = colaboradoresActivosEn(anio+'-01-01');
-    const fin = colaboradoresActivosEn(anio+'-12-31');
-    const promedio = (inicio + fin) / 2;
+    const promedio = ((Number(datosCalc[anio].inicio)||0) + (Number(datosCalc[anio].final)||0)) / 2;
     const vol = bajasEnAnio(anio, 'Voluntaria');
     const forz = bajasEnAnio(anio, 'Forzada');
-    if(!inicio && !fin && !vol && !forz) return;
+    if(!promedio) return; // sin plantilla capturada no se puede calcular el %
     etiquetasAnios.push(anio);
     voluntariaData.push(promedio ? +((vol/promedio)*100).toFixed(1) : 0);
     forzadaData.push(promedio ? +((forz/promedio)*100).toFixed(1) : 0);
@@ -5587,7 +6058,7 @@ document.getElementById('btnExportarResumenRotacion').addEventListener('click', 
   const filasPuesto = filasDesdeAgrupadoPorAnio(d.puestoPorAnio, 'Año', 'Puesto');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasPuesto.length?filasPuesto:[{Año:'',Puesto:'',Bajas:''}]), 'Bajas por puesto');
 
-  XLSX.writeFile(wb, 'Resumen_Rotacion_Personal_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  XLSX.writeFile(wb, 'Resumen_Rotacion_Personal_' + hoyISO() + '.xlsx');
 });
 
 document.getElementById('btnActualizarResumenRotacion').addEventListener('click', renderResumenRotacion);
@@ -5648,8 +6119,16 @@ function abrirModalEditarEmpleado(codigo){
   document.getElementById('empModalNombre').value = emp.nombre || '';
   document.getElementById('empModalArea').value = emp.area || '';
   document.getElementById('empModalPuesto').value = emp.puesto || '';
-  document.getElementById('empModalTipoEmpleado').value = emp.tipoEmpleado || '';
-  document.getElementById('empModalNuevaFecha').value = new Date().toISOString().slice(0,10);
+  // mismo valor en mayúsculas que usa la carga de Excel; si trae un tipo que no está en la lista, se agrega
+  // como opción temporal (antes el select quedaba vacío y al guardar se borraba el tipo de empleado)
+  const selTipo = document.getElementById('empModalTipoEmpleado');
+  const tipo = (emp.tipoEmpleado || '').toUpperCase();
+  selTipo.querySelectorAll('option[data-temporal]').forEach(o=>o.remove());
+  if(tipo && !Array.from(selTipo.options).some(o=>o.value===tipo)){
+    selTipo.insertAdjacentHTML('beforeend', `<option data-temporal="1">${tipo}</option>`);
+  }
+  selTipo.value = tipo;
+  document.getElementById('empModalNuevaFecha').value = hoyISO();
   document.getElementById('empModalNuevaObs').value = '';
   document.getElementById('empModalNuevoTipo').value = (emp.estatus||'').toUpperCase()==='BAJA' ? 'Alta' : 'Baja'; // sugiere el movimiento contrario al estatus actual
 
@@ -5715,7 +6194,7 @@ document.getElementById('btnGuardarDatosEmpleado').addEventListener('click', ()=
     seg.comentarios = comentarios;
   }
 
-  STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+  STATE.catalogoEmpleadosActualizado = hoyISO();
   saveLocal(STATE);
   actualizarResumenCatalogoEmpleados();
   poblarFiltroAnioBajas();
@@ -5765,9 +6244,20 @@ document.getElementById('btnAgregarMovimientoEmpleado').addEventListener('click'
   const fecha = document.getElementById('empModalNuevaFecha').value;
   const obs = document.getElementById('empModalNuevaObs').value.trim();
   if(!fecha){ alert('Indica la fecha del movimiento.'); return; }
+  const fBajaActual = efectivaFechaBaja(emp.codigo);
+  if(tipo === 'Alta' && (emp.estatus||'').toUpperCase() === 'BAJA' && fBajaActual && fecha > fBajaActual){
+    // reingreso: la baja anterior se archiva como registro aparte (ficha-P1…) para que siga contando
+    // en rotación; antes se perdía y el empleado desaparecía de la tabla
+    if(!confirm(`Se registrará el reingreso. La baja del ${fBajaActual} quedará guardada como un registro aparte (con su clasificación y motivo) y este empleado pasará a ACTIVO. ¿Continuar?`)) return;
+    archivarPeriodoActual_(emp);
+  }
   emp.historial = emp.historial || [];
   emp.historial.push({tipo, fecha, observaciones: obs});
   recalcularDesdeHistorial(emp);
+  if(tipo === 'Alta'){
+    // el modal muestra la sección de datos de baja solo para empleados en BAJA
+    document.getElementById('empModalBajaSeccion').style.display = 'none';
+  }
   saveLocal(STATE);
 
   document.getElementById('empModalNuevaObs').value = '';
@@ -5830,7 +6320,7 @@ function abrirModalAnadirBaja(){
   document.getElementById('abModalMotivo').value = '';
   document.getElementById('abModalCausa').innerHTML = opcionesCausasHTML('');
   document.getElementById('abModalCausaWrap').style.display = 'none';
-  document.getElementById('abModalFechaBaja').value = new Date().toISOString().slice(0,10);
+  document.getElementById('abModalFechaBaja').value = hoyISO();
   document.getElementById('modalAnadirBaja').classList.add('active');
 }
 function cerrarModalAnadirBaja(){
@@ -5863,6 +6353,10 @@ document.getElementById('btnGuardarAnadirBaja').addEventListener('click', ()=>{
     alert('El motivo es "Renuncia" — selecciona la causa antes de guardar.');
     return;
   }
+  if(fechaAlta && fechaBaja < fechaAlta){
+    alert('La fecha de baja no puede ser anterior a la fecha de alta.');
+    return;
+  }
   STATE.catalogoEmpleados = STATE.catalogoEmpleados || [];
   if(STATE.catalogoEmpleados.some(e=>String(e.codigo)===String(codigo))){
     alert('Ya existe un empleado con ese código/ficha en el catálogo. Usa "Editar" en la tabla si quieres modificarlo.');
@@ -5886,7 +6380,7 @@ document.getElementById('btnGuardarAnadirBaja').addEventListener('click', ()=>{
     clasificacion, motivo, causa: motivo === 'Renuncia' ? causa : '', comentarios
   });
 
-  STATE.catalogoEmpleadosActualizado = new Date().toISOString().slice(0,10);
+  STATE.catalogoEmpleadosActualizado = hoyISO();
   saveLocal(STATE);
 
   actualizarResumenCatalogoEmpleados();
@@ -5897,22 +6391,50 @@ document.getElementById('btnGuardarAnadirBaja').addEventListener('click', ()=>{
   alert('Baja registrada correctamente.');
 });
 
+/** Años de la Calculadora: los que ya tienen datos, los que tienen bajas en el catálogo, el actual y los
+ *  agregados a mano (antes eran 2025 y 2026 fijos en el código). */
+const aniosExtraCalc = new Set();
+function aniosCalculadora(){
+  return [...new Set([...Object.keys(STATE.rotacionData||{}), ...aniosDisponiblesBajas(), hoyISO().slice(0,4), ...aniosExtraCalc])].sort();
+}
+function pintarAniosCalculadora(){
+  const datos = STATE.rotacionData || {};
+  // conserva lo que ya estaba escrito en pantalla aunque todavía no se haya presionado "Calcular"
+  const enPantalla = {};
+  document.querySelectorAll('#calcAniosWrap input').forEach(i=>{ enPantalla[i.id] = i.value; });
+  document.getElementById('calcAniosWrap').innerHTML = aniosCalculadora().map(anio=>{
+    const d = datos[anio] || {};
+    const campo = (sufijo, etiqueta, valor) => {
+      const id = 'rot' + anio + sufijo;
+      const v = id in enPantalla ? enPantalla[id] : (valor ?? '');
+      return `<div class="form-field"><label>${etiqueta}</label><input type="number" id="${id}" min="0" value="${v}"></div>`;
+    };
+    return `<div class="card">
+      <h2>${anio}</h2>
+      <div class="desc">Datos del año completo</div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        ${campo('Inicio','Colaboradores al inicio', d.inicio)}${campo('Final','Colaboradores al final', d.final)}
+        ${campo('Voluntarias','Bajas voluntarias', d.voluntarias)}${campo('Forzadas','Bajas forzadas', d.forzadas)}
+      </div>
+    </div>`;
+  }).join('');
+}
+document.getElementById('btnAgregarAnioCalc').addEventListener('click', ()=>{
+  const anio = (prompt('¿Qué año quieres agregar? (AAAA)') || '').trim();
+  if(!anio) return;
+  if(!/^\d{4}$/.test(anio)){ alert('Escribe el año con 4 dígitos, por ejemplo 2027.'); return; }
+  aniosExtraCalc.add(anio);
+  pintarAniosCalculadora();
+});
+
 function cargarFormularioRotacion(){
   actualizarResumenCatalogoEmpleados();
   renderResumenRotacion();
   const datos = STATE.rotacionData || {};
-  const d25 = datos['2025'] || {};
-  const d26 = datos['2026'] || {};
-  document.getElementById('rot2025Inicio').value = d25.inicio ?? '';
-  document.getElementById('rot2025Final').value = d25.final ?? '';
-  document.getElementById('rot2025Voluntarias').value = d25.voluntarias ?? '';
-  document.getElementById('rot2025Forzadas').value = d25.forzadas ?? '';
-  document.getElementById('rot2026Inicio').value = d26.inicio ?? '';
-  document.getElementById('rot2026Final').value = d26.final ?? '';
-  document.getElementById('rot2026Voluntarias').value = d26.voluntarias ?? '';
-  document.getElementById('rot2026Forzadas').value = d26.forzadas ?? '';
+  document.getElementById('calcAniosWrap').innerHTML = ''; // se vuelve a pintar desde los datos guardados
+  pintarAniosCalculadora();
 
-  if(d25.inicio !== undefined || d26.inicio !== undefined){
+  if(Object.keys(datos).length){
     renderRotacion(datos);
   } else {
     document.getElementById('rotacionResultados').style.display = 'none';
@@ -5938,7 +6460,8 @@ function leerDatosAnioRotacion(anio){
 function calcularPorcentajesRotacion(d){
   if(!d) return null;
   const promedio = (d.inicio + d.final) / 2;
-  if(!promedio) return { promedio, pctVoluntaria: 0, pctForzada: 0, pctTotal: 0 };
+  // sin plantilla capturada no hay % que calcular: se muestra "—" en vez de un 0% engañoso
+  if(!promedio) return { promedio, pctVoluntaria: null, pctForzada: null, pctTotal: null };
   const pctVoluntaria = (d.voluntarias / promedio) * 100;
   const pctForzada = (d.forzadas / promedio) * 100;
   return { promedio, pctVoluntaria, pctForzada, pctTotal: pctVoluntaria + pctForzada };
@@ -5947,45 +6470,43 @@ function calcularPorcentajesRotacion(d){
 let chartRotacionInstance = null;
 
 document.getElementById('btnCalcularRotacion').addEventListener('click', ()=>{
-  const d25 = leerDatosAnioRotacion('2025');
-  const d26 = leerDatosAnioRotacion('2026');
-  if(!d25 && !d26){
+  const datos = {};
+  aniosCalculadora().forEach(anio=>{
+    const d = leerDatosAnioRotacion(anio);
+    if(d) datos[anio] = d;
+  });
+  if(!Object.keys(datos).length){
     alert('Captura al menos los datos de un año antes de calcular.');
     return;
   }
-  const datos = {};
-  if(d25) datos['2025'] = d25;
-  if(d26) datos['2026'] = d26;
   STATE.rotacionData = datos;
   saveLocal(STATE);
   renderRotacion(datos);
 });
 
 function renderRotacion(datos){
-  const r25 = calcularPorcentajesRotacion(datos['2025']);
-  const r26 = calcularPorcentajesRotacion(datos['2026']);
+  const anios = Object.keys(datos).sort();
+  const res = anios.map(a => calcularPorcentajesRotacion(datos[a]));
 
   document.getElementById('rotacionSinDatos').style.display = 'none';
   document.getElementById('rotacionResultados').style.display = 'block';
 
   const fmt = (v) => v===null ? '—' : v.toFixed(1) + '%';
+  document.getElementById('theadResumenRotacion').innerHTML = '<th>Tipo de salida</th>' + anios.map(a=>`<th>${a}</th>`).join('');
   const filas = [
-    ['Rotación Voluntaria', r25?r25.pctVoluntaria:null, r26?r26.pctVoluntaria:null],
-    ['Rotación Forzada', r25?r25.pctForzada:null, r26?r26.pctForzada:null],
-    ['Total', r25?r25.pctTotal:null, r26?r26.pctTotal:null],
+    ['Rotación Voluntaria', 'pctVoluntaria'],
+    ['Rotación Forzada', 'pctForzada'],
+    ['Total', 'pctTotal'],
   ];
-  document.getElementById('tblResumenRotacion').innerHTML = filas.map((f,i)=>{
+  document.getElementById('tblResumenRotacion').innerHTML = filas.map(([etiqueta, campo], i)=>{
     const esTotal = i === filas.length-1;
     return `<tr ${esTotal?'style="font-weight:700;background:#FAFBFB;"':''}>
-      <td>${f[0]}</td><td>${fmt(f[1])}</td><td>${fmt(f[2])}</td>
+      <td>${etiqueta}</td>${res.map(r=>`<td>${fmt(r ? r[campo] : null)}</td>`).join('')}
     </tr>`;
   }).join('');
 
-  const anios = [];
-  const voluntariaData = [];
-  const forzadaData = [];
-  if(r25){ anios.push('2025'); voluntariaData.push(+r25.pctVoluntaria.toFixed(1)); forzadaData.push(+r25.pctForzada.toFixed(1)); }
-  if(r26){ anios.push('2026'); voluntariaData.push(+r26.pctVoluntaria.toFixed(1)); forzadaData.push(+r26.pctForzada.toFixed(1)); }
+  const voluntariaData = res.map(r => r.pctVoluntaria === null ? null : +r.pctVoluntaria.toFixed(1));
+  const forzadaData = res.map(r => r.pctForzada === null ? null : +r.pctForzada.toFixed(1));
 
   const ctx = document.getElementById('chartRotacion');
   if(chartRotacionInstance) chartRotacionInstance.destroy();
@@ -6017,7 +6538,7 @@ function renderRotacion(datos){
    INICIALIZACIÓN
    ========================================================= */
 function init(){
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = hoyISO();
   document.getElementById('vFecha').value = hoy;
   document.getElementById('cFecha').value = hoy;
   populateVacanteSelect();
