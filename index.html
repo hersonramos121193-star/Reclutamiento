@@ -1063,6 +1063,36 @@
           <div id="resumenPuestoPorAnioWrap" class="grid two"></div>
           <div class="empty-state" id="resumenPuestoSinDatos" style="display:none;">No hay bajas cargadas todavía.</div>
         </div>
+
+        <div class="card">
+          <h2>Bajas por rango de edad — un gráfico por año</h2>
+          <div class="desc">Edad cumplida al momento de la baja, calculada con la fecha de nacimiento. "Sin dato" = sin fecha de nacimiento capturada.</div>
+          <div id="resumenEdadPorAnioWrap" class="grid two"></div>
+          <div class="empty-state" id="resumenEdadSinDatos" style="display:none;">No hay bajas cargadas todavía.</div>
+        </div>
+
+        <div class="card">
+          <h2>Bajas por escolaridad — un gráfico por año</h2>
+          <div id="resumenEscolaridadPorAnioWrap" class="grid two"></div>
+          <div class="empty-state" id="resumenEscolaridadSinDatos" style="display:none;">No hay bajas cargadas todavía.</div>
+        </div>
+
+        <div class="card">
+          <h2>Bajas por estado civil — un gráfico por año</h2>
+          <div id="resumenEstadoCivilPorAnioWrap" class="grid two"></div>
+          <div class="empty-state" id="resumenEstadoCivilSinDatos" style="display:none;">No hay bajas cargadas todavía.</div>
+        </div>
+
+        <div class="card">
+          <h2>Bajas con y sin crédito INFONAVIT — un gráfico por año</h2>
+          <div class="desc">El descuento promedio se calcula por separado para cada tipo de descuento (no se pueden promediar porcentajes con pesos o factores).</div>
+          <div id="resumenInfonavitPorAnioWrap" class="grid two"></div>
+          <div class="empty-state" id="resumenInfonavitSinDatos" style="display:none;">No hay bajas cargadas todavía.</div>
+          <table style="margin-top:12px;max-width:560px;">
+            <thead><tr><th>Tipo de descuento</th><th>Personas con crédito</th><th>Descuento promedio</th></tr></thead>
+            <tbody id="tblResumenDescuentoInfonavit"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1170,12 +1200,13 @@
           </div>
         </div>
         <div style="overflow-x:auto;">
-          <table style="min-width:1750px;font-size:12px;">
+          <table style="min-width:1950px;font-size:12px;">
             <thead>
               <tr>
                 <th></th><th>Código</th><th>Nombre</th><th>Área</th><th>Puesto</th><th>Fecha alta</th><th>Fecha baja (catálogo)</th>
                 <th style="background:#FBF1DC;">Mes de baja</th><th style="background:#FBF1DC;">Fecha de baja</th><th style="background:#FBF1DC;">Clasificación</th><th style="background:#FBF1DC;">Motivo</th><th style="background:#FBF1DC;">Causa (si Renuncia)</th><th style="background:#FBF1DC;">Comentarios</th>
                 <th style="background:#EAF1F6;">Antigüedad (días)</th><th style="background:#EAF1F6;">Año de baja</th><th style="background:#EAF1F6;">Estatus actual</th>
+                <th style="background:#EAF1F6;">Edad a la baja</th><th style="background:#EAF1F6;">INFONAVIT</th>
               </tr>
             </thead>
             <tbody id="tblBajasSeguimiento"></tbody>
@@ -1351,6 +1382,22 @@
     </div>
     <div class="desc" style="margin-top:-6px;margin-bottom:10px;">El estatus y las fechas vigentes se calculan solos según el último movimiento del historial de abajo — no se editan aquí directamente.</div>
 
+    <div style="border-top:1px solid #EDEEEF;margin-top:6px;padding-top:14px;">
+      <h3 style="font-size:14px;color:var(--navy);margin:0 0 10px;">Datos sociodemográficos</h3>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="form-field"><label>Fecha de nacimiento</label><input type="date" id="empModalFechaNacimiento"></div>
+        <div class="form-field"><label>Escolaridad</label><select id="empModalEscolaridad"></select></div>
+        <div class="form-field"><label>Estado civil</label><select id="empModalEstadoCivil"></select></div>
+      </div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="form-field"><label>¿Crédito INFONAVIT?</label>
+          <select id="empModalCredito"><option value="">Sin dato</option><option value="SI">Sí</option><option value="NO">No</option></select>
+        </div>
+        <div class="form-field emp-descuento"><label>Tipo de descuento</label><select id="empModalTipoDescuento"></select></div>
+        <div class="form-field emp-descuento"><label>Valor del descuento</label><input type="number" id="empModalValorDescuento" min="0" step="0.01" placeholder="Ej. 20 · 850 · 2.5"></div>
+      </div>
+    </div>
+
     <div id="empModalBajaSeccion" style="display:none;border-top:1px solid #EDEEEF;margin-top:6px;padding-top:14px;">
       <h3 style="font-size:14px;color:var(--navy);margin:0 0 10px;">Datos de la baja</h3>
       <div class="form-grid" style="grid-template-columns:1fr 1fr;">
@@ -1467,6 +1514,19 @@
         <label>Causa de la renuncia *</label>
         <select id="abModalCausa"></select>
       </div>
+    </div>
+    <h3 style="font-size:13px;color:var(--navy);margin:10px 0 8px;">Datos sociodemográficos (opcionales)</h3>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+      <div class="form-field"><label>Fecha de nacimiento</label><input type="date" id="abModalFechaNacimiento"></div>
+      <div class="form-field"><label>Escolaridad</label><select id="abModalEscolaridad"></select></div>
+      <div class="form-field"><label>Estado civil</label><select id="abModalEstadoCivil"></select></div>
+    </div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+      <div class="form-field"><label>¿Crédito INFONAVIT?</label>
+        <select id="abModalCredito"><option value="">Sin dato</option><option value="SI">Sí</option><option value="NO">No</option></select>
+      </div>
+      <div class="form-field ab-descuento"><label>Tipo de descuento</label><select id="abModalTipoDescuento"></select></div>
+      <div class="form-field ab-descuento"><label>Valor del descuento</label><input type="number" id="abModalValorDescuento" min="0" step="0.01" placeholder="Ej. 20 · 850 · 2.5"></div>
     </div>
     <div class="form-field"><label>Comentarios</label><input type="text" id="abModalComentarios" placeholder="Observaciones adicionales"></div>
 
@@ -5209,6 +5269,8 @@ function renderBajasSeguimiento(){
       <td style="background:#F4F8FA;text-align:center;">${calc.antiguedad}</td>
       <td style="background:#F4F8FA;text-align:center;">${calc.anioBaja}</td>
       <td style="background:#F4F8FA;text-align:center;">${calc.estatusActual}</td>
+      <td style="background:#F4F8FA;text-align:center;">${edadEnFecha(e.fechaNacimiento, efectivaFechaBaja(e.codigo)) ?? '—'}</td>
+      <td style="background:#F4F8FA;text-align:center;white-space:nowrap;">${textoInfonavit(e)}</td>
     </tr>`;
   }).join('');
 
@@ -5342,7 +5404,143 @@ function opcionesCausasHTML(seleccionada){
   return opts;
 }
 
+/* =========================================================
+   DATOS SOCIODEMOGRÁFICOS (edad, escolaridad, estado civil, crédito INFONAVIT)
+   Viven en el registro del empleado (catálogo); los periodos archivados (ficha-P1) los copian.
+   ========================================================= */
+const ESCOLARIDADES = ['Sin estudios','Primaria','Secundaria','Preparatoria/Bachillerato','Carrera técnica','Licenciatura/Ingeniería','Posgrado'];
+const ESTADOS_CIVILES = ['Soltero(a)','Casado(a)','Unión libre','Divorciado(a)','Separado(a)','Viudo(a)'];
+const TIPOS_DESCUENTO_INFONAVIT = ['Porcentaje','Cuota fija','Factor VSM/UMI'];
+const CAMPOS_SOCIODEMO = ['fechaNacimiento','escolaridad','estadoCivil','creditoInfonavit','tipoDescuentoInfonavit','valorDescuentoInfonavit'];
+
+/** Texto libre (Excel) → valor del catálogo. Si no se reconoce, se regresa tal cual para no perder el dato. */
+function normalizarPorTabla_(v, tabla){
+  const raw = String(v ?? '').trim();
+  if(!raw) return '';
+  const n = raw.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  for(const [re, canon] of tabla){ if(re.test(n)) return canon; }
+  return raw;
+}
+const normalizarEscolaridad = v => normalizarPorTabla_(v, [
+  [/POSGRADO|MAESTR|DOCTOR|ESPECIALIDAD/, 'Posgrado'],
+  [/TECNIC|\bTSU\b|CONALEP|CECATI/, 'Carrera técnica'], // antes que licenciatura: "Técnico Superior Universitario"
+  [/LICENCIA|\bLIC\b|INGENIER|\bING\b|UNIVERSI|PROFESIONAL/, 'Licenciatura/Ingeniería'],
+  [/PREPA|BACHILLER|MEDIA SUPERIOR|CBTIS|CETIS/, 'Preparatoria/Bachillerato'],
+  [/SECUNDARIA/, 'Secundaria'],
+  [/PRIMARIA/, 'Primaria'],
+  [/SIN ESTUDIOS|NINGUNA|^NO TIENE/, 'Sin estudios']
+]);
+const normalizarEstadoCivil = v => normalizarPorTabla_(v, [
+  [/UNION LIBRE|CONCUBIN/, 'Unión libre'],
+  [/SOLTER/, 'Soltero(a)'],
+  [/CASAD/, 'Casado(a)'],
+  [/DIVORCIAD/, 'Divorciado(a)'],
+  [/SEPARAD/, 'Separado(a)'],
+  [/VIUD/, 'Viudo(a)']
+]);
+const normalizarTipoDescuento = v => normalizarPorTabla_(v, [
+  [/VSM|UMI|VECES|FACTOR|SALARIO MINIMO/, 'Factor VSM/UMI'],
+  [/PORCENTAJE|^%|%$/, 'Porcentaje'],
+  [/CUOTA|FIJ|PESOS|\$/, 'Cuota fija']
+]);
+function normalizarCredito(v){
+  const n = String(v ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  if(['SI','S','1','X','CON CREDITO','TRUE'].includes(n)) return 'SI';
+  if(['NO','N','0','SIN CREDITO','FALSE'].includes(n)) return 'NO';
+  return '';
+}
+/** "20%", "$1,250.50", "2.5" → número; '' si no hay número. */
+function numeroDeTexto(v){
+  if(typeof v === 'number') return v;
+  const n = parseFloat(String(v ?? '').replace(/[$,%\s]/g,''));
+  return isNaN(n) ? '' : n;
+}
+/** Edad cumplida en una fecha (AAAA-MM-DD); null si falta algún dato. */
+function edadEnFecha(nacimiento, fecha){
+  if(!esFechaValida(nacimiento) || !esFechaValida(fecha)) return null;
+  const [an, mn, dn] = nacimiento.split('-').map(Number);
+  const [af, mf, df] = fecha.split('-').map(Number);
+  return af - an - ((mf < mn || (mf === mn && df < dn)) ? 1 : 0);
+}
+const RANGOS_EDAD = [
+  {label:'Menor de 18', max:17}, {label:'18–25', max:25}, {label:'26–35', max:35},
+  {label:'36–45', max:45}, {label:'46–55', max:55}, {label:'56+', max:Infinity}
+];
+function rangoEdad(edad){
+  if(edad === null) return 'Sin dato';
+  return RANGOS_EDAD.find(r => edad <= r.max).label;
+}
+/** Texto corto de INFONAVIT para la tabla: "Sí · 20%", "Sí · $850", "Sí · 2.5 VSM/UMI", "No" o "—". */
+function textoInfonavit(e){
+  if(e.creditoInfonavit === 'NO') return 'No';
+  if(e.creditoInfonavit !== 'SI') return '—';
+  const v = e.valorDescuentoInfonavit;
+  if(v === '' || v === undefined) return 'Sí';
+  if(e.tipoDescuentoInfonavit === 'Porcentaje') return `Sí · ${v}%`;
+  if(e.tipoDescuentoInfonavit === 'Cuota fija') return `Sí · $${v}`;
+  if(e.tipoDescuentoInfonavit === 'Factor VSM/UMI') return `Sí · ${v} VSM/UMI`;
+  return `Sí · ${v}`;
+}
+/** Copia los datos sociodemográficos de origen a destino SIN borrar lo que ya había si el origen viene vacío. */
+function copiarSociodemo(destino, origen){
+  CAMPOS_SOCIODEMO.forEach(k=>{ if(origen[k] !== undefined && origen[k] !== '') destino[k] = origen[k]; });
+  if(destino.creditoInfonavit === 'NO'){ destino.tipoDescuentoInfonavit = ''; destino.valorDescuentoInfonavit = ''; }
+}
+/** <option> de un catálogo, conservando como opción extra un valor guardado que no esté en la lista. */
+function opcionesCatalogoHTML(lista, seleccionada){
+  const sel = seleccionada || '';
+  return '<option value="">Sin dato</option>' + lista.map(x=>`<option ${x===sel?'selected':''}>${x}</option>`).join('') +
+    (sel && !lista.includes(sel) ? `<option selected>${sel}</option>` : '');
+}
+
+/** Autoprueba de la lectura sociodemográfica: abrir el dashboard con ?autotest=1 y ver la consola. */
+if(new URLSearchParams(location.search).get('autotest') === '1'){
+  let fallas = 0;
+  const ok = (cond, msg) => { if(!cond){ fallas++; console.error('❌ Autotest sociodemográfico falló: ' + msg); } };
+  ok(normalizarEstadoCivil('CASADA') === 'Casado(a)', 'casada');
+  ok(normalizarEstadoCivil('union libre') === 'Unión libre', 'unión libre');
+  ok(normalizarEscolaridad('Prepa') === 'Preparatoria/Bachillerato', 'prepa');
+  ok(normalizarEscolaridad('TSU en mantenimiento') === 'Carrera técnica', 'TSU');
+  ok(normalizarEscolaridad('Ing. Industrial') === 'Licenciatura/Ingeniería', 'ingeniería');
+  ok(normalizarEscolaridad('Lic. en Administración') === 'Licenciatura/Ingeniería', 'licenciatura abreviada');
+  ok(normalizarEscolaridad('Diplomado raro') === 'Diplomado raro', 'texto no reconocido se conserva');
+  ok(normalizarTipoDescuento('20%') === 'Porcentaje' && normalizarTipoDescuento('VSM') === 'Factor VSM/UMI' && normalizarTipoDescuento('Cuota fija') === 'Cuota fija', 'tipo descuento');
+  ok(normalizarCredito('SÍ') === 'SI' && normalizarCredito('no') === 'NO' && normalizarCredito('') === '', 'crédito');
+  ok(numeroDeTexto('$1,250.50') === 1250.5 && numeroDeTexto('20%') === 20 && numeroDeTexto('x') === '', 'números');
+  ok(edadEnFecha('1990-06-15','2026-06-14') === 35 && edadEnFecha('1990-06-15','2026-06-15') === 36 && edadEnFecha('', '2026-01-01') === null, 'edad');
+  ok(rangoEdad(17) === 'Menor de 18' && rangoEdad(25) === '18–25' && rangoEdad(56) === '56+' && rangoEdad(null) === 'Sin dato', 'rangos');
+  ok(validarSociodemo({creditoInfonavit:'SI', tipoDescuentoInfonavit:'Porcentaje', valorDescuentoInfonavit:120}, '') !== '', 'porcentaje > 100');
+  ok(validarSociodemo({fechaNacimiento:'2000-01-01', creditoInfonavit:'NO'}, '2020-01-01') === '', 'datos válidos');
+  if(!fallas) console.log('✅ Autotest sociodemográfico OK');
+}
+
+/** Columnas sociodemográficas de una fila del Excel de bajas, ya normalizadas. */
+function leerSociodemo_(f, leer, formatearFecha){
+  const tipo = normalizarTipoDescuento(leer(f,'tipoDescuento'));
+  const crudo = leer(f,'valorDescuento');
+  let valor = numeroDeTexto(crudo);
+  // celda con formato de porcentaje: Excel entrega 0.2 en vez de 20
+  // shortcut: asume que un porcentaje INFONAVIT nunca es menor a 1%; si llegara a existir, capturarlo a mano
+  if(tipo === 'Porcentaje' && typeof crudo === 'number' && valor > 0 && valor < 1) valor = +(valor * 100).toFixed(2);
+  let credito = normalizarCredito(leer(f,'creditoInfonavit'));
+  if(!credito && (tipo || valor !== '')) credito = 'SI'; // trae descuento aunque la columna de crédito venga vacía
+  return {
+    fechaNacimiento: formatearFecha(leer(f,'fechaNacimiento')),
+    escolaridad: normalizarEscolaridad(leer(f,'escolaridad')),
+    estadoCivil: normalizarEstadoCivil(leer(f,'estadoCivil')),
+    creditoInfonavit: credito,
+    tipoDescuentoInfonavit: credito === 'SI' ? tipo : '',
+    valorDescuentoInfonavit: credito === 'SI' ? valor : ''
+  };
+}
+
 const SINONIMOS_BAJAS_COMPLETO = {
+  fechaNacimiento: ['FECHADENACIMIENTO','FECHANACIMIENTO','FNACIMIENTO'],
+  escolaridad: ['ESCOLARIDAD','GRADODEESTUDIOS'],
+  estadoCivil: ['ESTADOCIVIL','EDOCIVIL'],
+  creditoInfonavit: ['CREDITOINFONAVIT','INFONAVIT'],
+  tipoDescuento: ['TIPODEDESCUENTO','TIPODESCUENTOINFONAVIT','TIPODEDESCUENTOINFONAVIT'],
+  valorDescuento: ['DESCUENTOINFONAVIT','VALORDESCUENTO','VALORDEDESCUENTO','FACTORDESCUENTO','VALORDESCUENTOINFONAVIT','VALORDEDESCUENTOINFONAVIT'],
   codigo: ['FICHA','CODIGO'],
   nombre: ['NOMBRE','NOMBRECOMPLETO'],
   puesto: ['PUESTO'],
@@ -5411,7 +5609,8 @@ function parsearHojaBajasCompleto(ws){
       nombre: String(leer(f,'nombre')||'').trim(),
       area: String(leer(f,'area')||'').trim(),
       puesto: String(leer(f,'puesto')||'').trim(),
-      tipoEmpleado: String(leer(f,'tipoEmpleado')||'').trim().toUpperCase()
+      tipoEmpleado: String(leer(f,'tipoEmpleado')||'').trim().toUpperCase(),
+      ...leerSociodemo_(f, leer, formatearFecha)
     };
     // Cada periodo (alta 1/baja 1 y, si hubo recontratación, alta 2/baja 2) sale como su propio registro:
     // antes solo se conservaba el más reciente y la primera baja se perdía de las estadísticas.
@@ -5472,6 +5671,7 @@ function upsertPeriodoArchivado_(base, p, segPrevio){
   }
   Object.assign(emp, { nombre: p.nombre, area: p.area, puesto: p.puesto, tipoEmpleado: p.tipoEmpleado || emp.tipoEmpleado || '',
     fechaAlta: p.fechaAlta, fechaBaja: p.fechaBaja, estatus: 'BAJA' });
+  copiarSociodemo(emp, p);
   let seg = segs.find(s => String(s.codigo) === emp.codigo);
   if(!seg){ seg = {...(segPrevio||{}), codigo: emp.codigo}; segs.push(seg); }
   aplicarDatosBaja_(seg, p);
@@ -5483,7 +5683,8 @@ function archivarPeriodoActual_(emp){
   if(!esFechaValida(fBaja)) return;
   const seg = (STATE.seguimientoBajas||[]).find(s=>String(s.codigo)===String(emp.codigo));
   upsertPeriodoArchivado_(emp.codigoBase || emp.codigo,
-    {nombre: emp.nombre, area: emp.area, puesto: emp.puesto, tipoEmpleado: emp.tipoEmpleado, fechaAlta: emp.fechaAlta, fechaBaja: fBaja}, seg);
+    {nombre: emp.nombre, area: emp.area, puesto: emp.puesto, tipoEmpleado: emp.tipoEmpleado, fechaAlta: emp.fechaAlta, fechaBaja: fBaja,
+     ...Object.fromEntries(CAMPOS_SOCIODEMO.map(k=>[k, emp[k]]))}, seg);
   STATE.seguimientoBajas = STATE.seguimientoBajas.filter(s=>String(s.codigo)!==String(emp.codigo));
 }
 
@@ -5492,7 +5693,8 @@ document.getElementById('btnDescargarPlantillaBajasCompleto').addEventListener('
   // Motivo y Causa, así que al volver a subirla se perdían). Una fila por periodo con la ficha original:
   // al subirla de nuevo, los periodos de la misma ficha se vuelven a juntar.
   const empleados = STATE.catalogoEmpleados || [];
-  const headers = ['FICHA','NOMBRE','PUESTO','TIPO DE EMPLEADO','PLANTA','FECHA DE ALTA 1','FECHA DE BAJA 1','CLASIFICACION 1','MOTIVO 1','CAUSA 1','FECHA DE ALTA 2','FECHA DE BAJA 2','CLASIFICACION 2','MOTIVO 2','CAUSA 2'];
+  const headers = ['FICHA','NOMBRE','PUESTO','TIPO DE EMPLEADO','PLANTA','FECHA DE ALTA 1','FECHA DE BAJA 1','CLASIFICACION 1','MOTIVO 1','CAUSA 1','FECHA DE ALTA 2','FECHA DE BAJA 2','CLASIFICACION 2','MOTIVO 2','CAUSA 2',
+    'FECHA DE NACIMIENTO','ESCOLARIDAD','ESTADO CIVIL','CREDITO INFONAVIT','TIPO DE DESCUENTO','VALOR DESCUENTO'];
   const filas = empleados.length > 0 ? empleados.map(e=>{
     const seg = (STATE.seguimientoBajas||[]).find(s=>String(s.codigo)===String(e.codigo)) || {};
     const esBaja = (e.estatus||'').toUpperCase()==='BAJA';
@@ -5500,15 +5702,17 @@ document.getElementById('btnDescargarPlantillaBajasCompleto').addEventListener('
       FICHA: e.codigoBase || e.codigo, NOMBRE: e.nombre, PUESTO: e.puesto, 'TIPO DE EMPLEADO': e.tipoEmpleado||'', PLANTA: e.area,
       'FECHA DE ALTA 1': e.fechaAlta||'', 'FECHA DE BAJA 1': esBaja ? (efectivaFechaBaja(e.codigo) || '') : '',
       'CLASIFICACION 1': esBaja ? (seg.clasificacion||'').toUpperCase() : '',
-      'MOTIVO 1': esBaja ? (seg.motivo||'') : '', 'CAUSA 1': esBaja ? (seg.causa||'') : ''
+      'MOTIVO 1': esBaja ? (seg.motivo||'') : '', 'CAUSA 1': esBaja ? (seg.causa||'') : '',
+      'FECHA DE NACIMIENTO': e.fechaNacimiento||'', 'ESCOLARIDAD': e.escolaridad||'', 'ESTADO CIVIL': e.estadoCivil||'',
+      'CREDITO INFONAVIT': e.creditoInfonavit||'', 'TIPO DE DESCUENTO': e.tipoDescuentoInfonavit||'', 'VALOR DESCUENTO': e.valorDescuentoInfonavit ?? ''
     };
   }) : [{}];
   const ws = XLSX.utils.json_to_sheet(filas, {header: headers});
   if(empleados.length === 0){
     XLSX.utils.sheet_add_aoa(ws, [headers], {origin:'A1'});
-    ws['!ref'] = 'A1:O1';
+    ws['!ref'] = 'A1:U1';
   }
-  ws['!cols'] = [{wch:10},{wch:32},{wch:26},{wch:16},{wch:14},{wch:14},{wch:14},{wch:14},{wch:18},{wch:28},{wch:14},{wch:14},{wch:14},{wch:18},{wch:28}];
+  ws['!cols'] = [{wch:10},{wch:32},{wch:26},{wch:16},{wch:14},{wch:14},{wch:14},{wch:14},{wch:18},{wch:28},{wch:14},{wch:14},{wch:14},{wch:18},{wch:28},{wch:16},{wch:24},{wch:14},{wch:12},{wch:16},{wch:12}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Bajas');
   XLSX.writeFile(wb, 'Plantilla_Bajas_' + hoyISO() + '.xlsx');
@@ -5579,6 +5783,7 @@ document.getElementById('btnCargarBajasCompleto').addEventListener('click', asyn
       emp.area = vigente.area || emp.area || '';
       emp.puesto = vigente.puesto || emp.puesto || '';
       if(vigente.tipoEmpleado) emp.tipoEmpleado = vigente.tipoEmpleado;
+      copiarSociodemo(emp, vigente); // un dato vacío en el archivo no borra lo ya capturado
       if(esFechaValida(vigente.fechaAlta)) emp.fechaAlta = vigente.fechaAlta;
 
       if(esFechaValida(vigente.fechaBaja)){
@@ -5717,6 +5922,7 @@ let chartsResumenTipoPorAnio = [];
 let chartsResumenMotivoPorAnio = [];
 let chartsResumenPlantaPorAnio = [];
 let chartsResumenPuestoPorAnio = [];
+let chartsResumenEdadPorAnio = [], chartsResumenEscolaridadPorAnio = [], chartsResumenEstadoCivilPorAnio = [], chartsResumenInfonavitPorAnio = [];
 let ULTIMO_RESUMEN_ROTACION = null; // snapshot de los datos agregados del Resumen, listo para exportar a Excel
 
 /** Agrupa bajas por año de baja efectiva y luego por una clave (causa, tipo de empleado, motivo, planta, etc.). Devuelve {anio: {clave: count}}. */
@@ -5737,7 +5943,7 @@ function agruparBajasPorAnio(bajas, segPorCodigo, claveFn){
 
 /** Dibuja un gráfico independiente por cada año dentro de wrapId, usando los datos ya agrupados por agruparBajasPorAnio. */
 function pintarGraficosPorAnio(config){
-  const {wrapId, sinDatosId, datosPorAnio, instancesArrayRef, tipo, idPrefijo, ordenarPorValor} = config;
+  const {wrapId, sinDatosId, datosPorAnio, instancesArrayRef, tipo, idPrefijo, ordenarPorValor, ordenFijo} = config;
   const wrap = document.getElementById(wrapId);
   const sinDatos = document.getElementById(sinDatosId);
   instancesArrayRef.length = 0;
@@ -5756,6 +5962,7 @@ function pintarGraficosPorAnio(config){
     const datosAnio = datosPorAnio[anio];
     let claves = Object.keys(datosAnio);
     if(ordenarPorValor) claves = claves.sort((a,b)=>datosAnio[b]-datosAnio[a]);
+    if(ordenFijo) claves = ordenFijo.filter(k => k in datosAnio); // ej. rangos de edad en su orden natural
     const total = Object.values(datosAnio).reduce((a,b)=>a+b,0);
     const canvasId = idPrefijo + '_' + anio;
 
@@ -5976,6 +6183,47 @@ function renderResumenRotacion(){
   // versión completa (todos los puestos, no solo el top 10) para el Excel exportado
   const datosPuestoPorAnioCompleto = agruparBajasPorAnio(bajas, segPorCodigo, (e)=> (e.puesto||'Sin especificar').trim() || 'Sin especificar');
 
+  // ---- Datos sociodemográficos — un gráfico por año de cada uno ----
+  const datosEdadPorAnio = agruparBajasPorAnio(bajas, segPorCodigo, (e)=> rangoEdad(edadEnFecha(e.fechaNacimiento, efectivaFechaBaja(e.codigo))));
+  pintarGraficosPorAnio({
+    wrapId: 'resumenEdadPorAnioWrap', sinDatosId: 'resumenEdadSinDatos',
+    datosPorAnio: datosEdadPorAnio, instancesArrayRef: chartsResumenEdadPorAnio,
+    tipo: 'bar', idPrefijo: 'chartResumenEdadAnio', ordenFijo: [...RANGOS_EDAD.map(r=>r.label), 'Sin dato']
+  });
+  const datosEscolaridadPorAnio = agruparBajasPorAnio(bajas, segPorCodigo, (e)=> e.escolaridad || 'Sin dato');
+  pintarGraficosPorAnio({
+    wrapId: 'resumenEscolaridadPorAnioWrap', sinDatosId: 'resumenEscolaridadSinDatos',
+    datosPorAnio: datosEscolaridadPorAnio, instancesArrayRef: chartsResumenEscolaridadPorAnio,
+    tipo: 'doughnut', idPrefijo: 'chartResumenEscolaridadAnio', ordenarPorValor: true
+  });
+  const datosEstadoCivilPorAnio = agruparBajasPorAnio(bajas, segPorCodigo, (e)=> e.estadoCivil || 'Sin dato');
+  pintarGraficosPorAnio({
+    wrapId: 'resumenEstadoCivilPorAnioWrap', sinDatosId: 'resumenEstadoCivilSinDatos',
+    datosPorAnio: datosEstadoCivilPorAnio, instancesArrayRef: chartsResumenEstadoCivilPorAnio,
+    tipo: 'doughnut', idPrefijo: 'chartResumenEstadoCivilAnio', ordenarPorValor: true
+  });
+  const datosInfonavitPorAnio = agruparBajasPorAnio(bajas, segPorCodigo, (e)=>
+    e.creditoInfonavit === 'SI' ? 'Con crédito' : e.creditoInfonavit === 'NO' ? 'Sin crédito' : 'Sin dato');
+  pintarGraficosPorAnio({
+    wrapId: 'resumenInfonavitPorAnioWrap', sinDatosId: 'resumenInfonavitSinDatos',
+    datosPorAnio: datosInfonavitPorAnio, instancesArrayRef: chartsResumenInfonavitPorAnio,
+    tipo: 'doughnut', idPrefijo: 'chartResumenInfonavitAnio', ordenFijo: ['Con crédito','Sin crédito','Sin dato']
+  });
+  // descuento promedio por tipo (todas las bajas con crédito y valor capturado, todos los años)
+  const descuentoPorTipo = {};
+  bajas.forEach(e=>{
+    const v = Number(e.valorDescuentoInfonavit);
+    if(e.creditoInfonavit !== 'SI' || !(v > 0)) return;
+    const t = e.tipoDescuentoInfonavit || 'Sin tipo';
+    descuentoPorTipo[t] = descuentoPorTipo[t] || {personas:0, suma:0};
+    descuentoPorTipo[t].personas++; descuentoPorTipo[t].suma += v;
+  });
+  const formatoDescuento = (t, v) => t === 'Porcentaje' ? v.toFixed(1)+'%' : t === 'Cuota fija' ? '$'+v.toLocaleString('es-MX',{minimumFractionDigits:2, maximumFractionDigits:2}) : t === 'Factor VSM/UMI' ? v.toFixed(2)+' VSM/UMI' : v.toFixed(2);
+  const filasDescuento = Object.keys(descuentoPorTipo).map(t=>({tipo:t, personas:descuentoPorTipo[t].personas, promedio: descuentoPorTipo[t].suma/descuentoPorTipo[t].personas}));
+  document.getElementById('tblResumenDescuentoInfonavit').innerHTML = filasDescuento.length
+    ? filasDescuento.map(f=>`<tr><td>${f.tipo}</td><td>${f.personas}</td><td>${formatoDescuento(f.tipo, f.promedio)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="empty-state">Sin descuentos INFONAVIT capturados.</td></tr>';
+
   // ---- Guarda todo lo calculado para poder exportarlo a Excel tal cual se ve en pantalla ----
   ULTIMO_RESUMEN_ROTACION = {
     kpis: { total, voluntarias, forzadas, antiguedadPromedioAnios: permanenciaTodas.length ? +(Math.round(permanenciaTodas.reduce((a,b)=>a+b.dias,0)/permanenciaTodas.length)/365).toFixed(2) : null },
@@ -5986,7 +6234,12 @@ function renderResumenRotacion(){
     tipoPorAnio: datosTipoPorAnio,
     motivoPorAnio: datosMotivoPorAnio,
     plantaPorAnio: datosPlantaPorAnio,
-    puestoPorAnio: datosPuestoPorAnioCompleto
+    puestoPorAnio: datosPuestoPorAnioCompleto,
+    edadPorAnio: datosEdadPorAnio,
+    escolaridadPorAnio: datosEscolaridadPorAnio,
+    estadoCivilPorAnio: datosEstadoCivilPorAnio,
+    infonavitPorAnio: datosInfonavitPorAnio,
+    descuentoInfonavit: filasDescuento.map(f=>({'Tipo de descuento': f.tipo, 'Personas con crédito': f.personas, 'Descuento promedio': +f.promedio.toFixed(2)}))
   };
 }
 
@@ -6058,6 +6311,15 @@ document.getElementById('btnExportarResumenRotacion').addEventListener('click', 
   const filasPuesto = filasDesdeAgrupadoPorAnio(d.puestoPorAnio, 'Año', 'Puesto');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasPuesto.length?filasPuesto:[{Año:'',Puesto:'',Bajas:''}]), 'Bajas por puesto');
 
+  // Hojas 10–13: datos sociodemográficos por año + descuento INFONAVIT promedio por tipo
+  [['edadPorAnio','Rango de edad','Bajas por edad'], ['escolaridadPorAnio','Escolaridad','Bajas por escolaridad'],
+   ['estadoCivilPorAnio','Estado civil','Bajas por estado civil'], ['infonavitPorAnio','Crédito INFONAVIT','Bajas por INFONAVIT']].forEach(([clave, col, hoja])=>{
+    const filas = filasDesdeAgrupadoPorAnio(d[clave] || {}, 'Año', col);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas.length ? filas : [{Año:'', [col]:'', Bajas:''}]), hoja);
+  });
+  const filasDesc = d.descuentoInfonavit || [];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasDesc.length ? filasDesc : [{'Tipo de descuento':'', 'Personas con crédito':'', 'Descuento promedio':''}]), 'Descuento INFONAVIT');
+
   XLSX.writeFile(wb, 'Resumen_Rotacion_Personal_' + hoyISO() + '.xlsx');
 });
 
@@ -6128,6 +6390,7 @@ function abrirModalEditarEmpleado(codigo){
     selTipo.insertAdjacentHTML('beforeend', `<option data-temporal="1">${tipo}</option>`);
   }
   selTipo.value = tipo;
+  llenarSociodemoForm('emp', emp);
   document.getElementById('empModalNuevaFecha').value = hoyISO();
   document.getElementById('empModalNuevaObs').value = '';
   document.getElementById('empModalNuevoTipo').value = (emp.estatus||'').toUpperCase()==='BAJA' ? 'Alta' : 'Baja'; // sugiere el movimiento contrario al estatus actual
@@ -6170,10 +6433,13 @@ document.getElementById('btnGuardarDatosEmpleado').addEventListener('click', ()=
   const area = document.getElementById('empModalArea').value.trim();
   const puesto = document.getElementById('empModalPuesto').value.trim();
   if(!nombre || !area || !puesto){ alert('Nombre, planta/área y puesto son obligatorios.'); return; }
+  const socio = leerSociodemoForm('emp', emp.fechaAlta);
+  if(socio.error){ alert(socio.error); return; }
   emp.nombre = nombre;
   emp.area = area;
   emp.puesto = puesto;
   emp.tipoEmpleado = document.getElementById('empModalTipoEmpleado').value;
+  Object.assign(emp, socio.datos); // aquí sí se puede borrar un dato (dejarlo en "Sin dato")
 
   const esBaja = (emp.estatus||'').toUpperCase() === 'BAJA';
   if(esBaja){
@@ -6309,6 +6575,56 @@ function eliminarMovimientoEmpleado(idx){
 
 
 /* =========================================================
+   DATOS SOCIODEMOGRÁFICOS en los modales ("ab" = Añadir baja, "emp" = Editar empleado)
+   ========================================================= */
+function llenarSociodemoForm(prefijo, d){
+  d = d || {};
+  document.getElementById(prefijo+'ModalFechaNacimiento').value = d.fechaNacimiento || '';
+  document.getElementById(prefijo+'ModalEscolaridad').innerHTML = opcionesCatalogoHTML(ESCOLARIDADES, d.escolaridad);
+  document.getElementById(prefijo+'ModalEstadoCivil').innerHTML = opcionesCatalogoHTML(ESTADOS_CIVILES, d.estadoCivil);
+  document.getElementById(prefijo+'ModalCredito').value = d.creditoInfonavit || '';
+  document.getElementById(prefijo+'ModalTipoDescuento').innerHTML = opcionesCatalogoHTML(TIPOS_DESCUENTO_INFONAVIT, d.tipoDescuentoInfonavit);
+  document.getElementById(prefijo+'ModalValorDescuento').value = d.valorDescuentoInfonavit ?? '';
+  mostrarDescuento_(prefijo);
+}
+function mostrarDescuento_(prefijo){
+  const conCredito = document.getElementById(prefijo+'ModalCredito').value === 'SI';
+  document.querySelectorAll('.'+prefijo+'-descuento').forEach(el=>el.style.display = conCredito ? '' : 'none');
+}
+['ab','emp'].forEach(p=>document.getElementById(p+'ModalCredito').addEventListener('change', ()=>mostrarDescuento_(p)));
+
+/** Lee y valida los datos del modal. Devuelve {datos} o {error}. fechaAlta sirve para revisar la fecha de nacimiento. */
+function leerSociodemoForm(prefijo, fechaAlta){
+  const credito = document.getElementById(prefijo+'ModalCredito').value;
+  const valorTxt = document.getElementById(prefijo+'ModalValorDescuento').value;
+  const datos = {
+    fechaNacimiento: document.getElementById(prefijo+'ModalFechaNacimiento').value,
+    escolaridad: document.getElementById(prefijo+'ModalEscolaridad').value,
+    estadoCivil: document.getElementById(prefijo+'ModalEstadoCivil').value,
+    creditoInfonavit: credito,
+    tipoDescuentoInfonavit: credito === 'SI' ? document.getElementById(prefijo+'ModalTipoDescuento').value : '',
+    valorDescuentoInfonavit: credito === 'SI' && valorTxt !== '' ? parseFloat(valorTxt) : ''
+  };
+  const error = validarSociodemo(datos, fechaAlta);
+  if(error) return {error};
+  const edadAlta = edadEnFecha(datos.fechaNacimiento, fechaAlta);
+  if(edadAlta !== null && edadAlta < 15 &&
+     !confirm(`Con esa fecha de nacimiento la persona tenía ${edadAlta} años al darse de alta. ¿Es correcto?`)) return {error: 'Revisa la fecha de nacimiento.'};
+  return {datos};
+}
+/** Reglas de captura de los datos sociodemográficos; '' si todo está bien. */
+function validarSociodemo(d, fechaAlta){
+  if(d.fechaNacimiento && d.fechaNacimiento > hoyISO()) return 'La fecha de nacimiento no puede ser futura.';
+  if(d.fechaNacimiento && esFechaValida(fechaAlta) && d.fechaNacimiento >= fechaAlta) return 'La fecha de nacimiento debe ser anterior a la fecha de alta.';
+  if(d.creditoInfonavit === 'SI'){
+    if(!d.tipoDescuentoInfonavit) return 'Indica el tipo de descuento INFONAVIT.';
+    if(!(d.valorDescuentoInfonavit > 0)) return 'Indica el valor del descuento INFONAVIT (mayor a 0).';
+    if(d.tipoDescuentoInfonavit === 'Porcentaje' && d.valorDescuentoInfonavit > 100) return 'Un descuento en porcentaje no puede ser mayor a 100.';
+  }
+  return '';
+}
+
+/* =========================================================
    MODAL "AÑADIR BAJA MANUAL"
    ========================================================= */
 function abrirModalAnadirBaja(){
@@ -6321,6 +6637,7 @@ function abrirModalAnadirBaja(){
   document.getElementById('abModalCausa').innerHTML = opcionesCausasHTML('');
   document.getElementById('abModalCausaWrap').style.display = 'none';
   document.getElementById('abModalFechaBaja').value = hoyISO();
+  llenarSociodemoForm('ab', {});
   document.getElementById('modalAnadirBaja').classList.add('active');
 }
 function cerrarModalAnadirBaja(){
@@ -6362,12 +6679,15 @@ document.getElementById('btnGuardarAnadirBaja').addEventListener('click', ()=>{
     alert('Ya existe un empleado con ese código/ficha en el catálogo. Usa "Editar" en la tabla si quieres modificarlo.');
     return;
   }
+  const socio = leerSociodemoForm('ab', fechaAlta || fechaBaja);
+  if(socio.error){ alert(socio.error); return; }
 
   const emp = {
     codigo, nombre, area, puesto, tipoEmpleado,
     fechaAlta: esFechaValida(fechaAlta) ? fechaAlta : '',
     fechaBaja, estatus: 'BAJA',
     departamento:'', clasifKpi:'', fechaReingreso:'',
+    ...socio.datos,
     historial: []
   };
   if(esFechaValida(fechaAlta)) emp.historial.push({tipo:'Alta', fecha: fechaAlta, observaciones:'Alta registrada al capturar la baja manual'});
