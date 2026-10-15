@@ -1143,8 +1143,8 @@
           <span id="rotacionNubeTexto">Sin sincronizar todavía.</span>
         </div>
         <div class="form-actions" style="justify-content:flex-start;">
-          <button class="btn" id="btnGuardarRotacionNube">☁️ Guardar en la nube</button>
-          <button class="btn secondary" id="btnCargarRotacionNube">⬇️ Cargar desde la nube</button>
+          <button class="btn" id="btnGuardarRotacionNube">☁️ Guardar Rotación en la nube</button>
+          <button class="btn secondary" id="btnCargarRotacionNube">⬇️ Cargar Rotación desde la nube</button>
         </div>
       </div>
 
@@ -1283,14 +1283,14 @@
 
     <div class="card">
       <h2>☁️ Sincronización de Reclutamiento (Vacantes y Candidatos)</h2>
-      <div class="desc">Cada vez que agregas o modificas algo aquí, se sube solo a tu Google Sheet unos segundos después (verás el punto pasar a "Sincronizando…" y luego a verde). "Guardar en la nube" fuerza una subida inmediata; "Cargar desde la nube" trae lo que ya guardó alguien más del equipo (reemplaza lo que tengas en este navegador). Usa la misma URL/token configurados arriba.</div>
+      <div class="desc">Cada vez que agregas o modificas algo aquí, se sube solo a tu Google Sheet unos segundos después (verás el punto pasar a "Sincronizando…" y luego a verde). "Guardar en la nube" fuerza una subida inmediata; "Cargar desde la nube" trae lo que ya guardó alguien más del equipo (reemplaza lo que tengas en este navegador). Usa la misma URL/token configurados arriba. <b>Solo cubre Vacantes, Candidatos y Psicometrías</b>: las bajas se cargan en Rotación de personal → Bajas y seguimiento.</div>
       <div id="reclutamientoNubeEstadoBox" class="conexion-estado-box sin-config" style="margin:12px 0;">
         <span class="dot off gris" id="reclutamientoNubeDot"></span>
         <span id="reclutamientoNubeTexto">Aún no se ha sincronizado en este navegador.</span>
       </div>
       <div class="form-actions" style="justify-content:flex-start;">
-        <button class="btn ghost" id="btnGuardarReclutamientoNube">☁️ Guardar en la nube</button>
-        <button class="btn" id="btnCargarReclutamientoNube">⬇️ Cargar desde la nube</button>
+        <button class="btn ghost" id="btnGuardarReclutamientoNube">☁️ Guardar Reclutamiento en la nube</button>
+        <button class="btn" id="btnCargarReclutamientoNube">⬇️ Cargar Reclutamiento desde la nube</button>
       </div>
     </div>
 
@@ -1588,6 +1588,10 @@ function sanearState(st){
       // se reemplaza cada registro EN SU LUGAR del arreglo para no romper referencias ya abiertas en pantalla
       st[k].forEach((r,i)=>{ const limpio = sanear(r); if(JSON.stringify(limpio) !== JSON.stringify(r)){ Object.keys(r).forEach(p=>delete r[p]); Object.assign(r, limpio); } });
     }
+  });
+  // El Sheet en español devuelve los decimales con coma ("1266,83"): sin esto el descuento salía vacío al cargar de la nube.
+  (st.catalogoEmpleados||[]).forEach(r=>{
+    if(typeof r.valorDescuentoInfonavit === 'string' && /^\d+(,\d+)?$/.test(r.valorDescuentoInfonavit.trim())) r.valorDescuentoInfonavit = Number(r.valorDescuentoInfonavit.trim().replace(',', '.'));
   });
   return st;
 }
